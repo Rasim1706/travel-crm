@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM — Отдел продаж</title>
+<style>
+  :root {
+    --primary  : #2563eb;
+    --primary-h: #1d4ed8;
+    --danger   : #dc2626;
+    --danger-h : #b91c1c;
+    --bg       : #f1f5f9;
+    --card     : #ffffff;
+    --text     : #1e293b;
+    --muted    : #64748b;
+    --border   : #e2e8f0;
+    --radius   : 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--primary);
+    color: #fff;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  header .logo { font-size: 24px; }
+  header h1   { font-size: 20px; font-weight: 700; }
+  header span { font-size: 13px; opacity: .8; }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+  }
+  .tab {
+    padding: 14px 20px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--muted);
+    border-bottom: 3px solid transparent;
+    transition: .2s;
+    user-select: none;
+  }
+  .tab:hover   { color: var(--primary); }
+  .tab.active  { color: var(--primary); border-color: var(--primary); }
+
+  /* ── Main ── */
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── Card ── */
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ── Form ── */
+  .form-group { margin-bottom: 20px; }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  input, select {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 15px;
+    color: var(--text);
+    background: #fff;
+    transition: border-color .2s;
+    outline: none;
+  }
+  input:focus, select:focus { border-color: var(--primary); }
+
+  .btn {
+    width: 100%;
+    padding: 13px;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background .2s, transform .1s;
+  }
+  .btn:hover    { background: var(--primary-h); }
+  .btn:active   { transform: scale(.98); }
+  .btn:disabled { background: #93c5fd; cursor: not-allowed; }
+
+  /* ── Toast ── */
+  .toast {
+    display: none;
+    padding: 14px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    animation: fadeIn .3s;
+    align-items: center;
+    gap: 8px;
+  }
+  .toast.success { background: #dcfce7; color: #15803d; border: 1px solid #86efac; display: flex; }
+  .toast.error   { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; display: flex; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+  /* ── Stat cards ── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    text-align: center;
+  }
+  .stat-card .number { font-size: 36px; font-weight: 800; color: var(--primary); }
+  .stat-card .label  { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  /* ── Table ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    background: #f8fafc;
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    border-bottom: 2px solid var(--border);
+  }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td      { background: #f8fafc; }
+
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    background: #dbeafe;
+    color: var(--primary);
+  }
+
+  /* ── Progress bar ── */
+  .bar-wrap { background: #e2e8f0; border-radius: 999px; height: 8px; margin-top: 6px; overflow: hidden; }
+  .bar      { height: 100%; border-radius: 999px; background: var(--primary); transition: width .6s ease; }
+
+  /* ── Week label ── */
+  .week-label { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+
+  /* ── Empty state ── */
+  .empty { text-align: center; padding: 48px 16px; color: var(--muted); }
+  .empty .icon { font-size: 48px; margin-bottom: 12px; }
+
+  /* ── Loader ── */
+  .loader { text-align: center; padding: 32px; color: var(--muted); font-size: 14px; }
+
+  /* ── Mini chart ── */
+  .chart-wrap { display: flex; align-items: flex-end; gap: 8px; height: 100px; margin-top: 12px; }
+  .chart-col  { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .chart-bar  { width: 100%; background: var(--primary); border-radius: 4px 4px 0 0; min-height: 4px; opacity: .85; }
+  .chart-bar:hover { opacity: 1; }
+  .chart-lbl  { font-size: 9px; color: var(--muted); white-space: nowrap; transform: rotate(-30deg); margin-top: 4px; }
+
+  /* ── Managers page ── */
+  .add-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .add-row input { flex: 1; margin: 0; }
+  .add-row .btn-add {
+    width: auto;
+    padding: 11px 20px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+
+  .manager-list { list-style: none; }
+  .manager-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    transition: background .15s;
+  }
+  .manager-item:last-child { border-bottom: none; }
+  .manager-item:hover { background: #f8fafc; }
+  .manager-name { font-size: 15px; font-weight: 500; display: flex; align-items: center; gap: 10px; }
+  .manager-name .avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .btn-delete {
+    background: none;
+    border: 1.5px solid var(--border);
+    color: var(--danger);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: .15s;
+  }
+  .btn-delete:hover { background: #fee2e2; border-color: var(--danger); }
+
+  .managers-empty {
+    text-align: center;
+    padding: 40px;
+    color: var(--muted);
+    font-size: 15px;
+  }
+
+  /* ── Confirm dialog ── */
+  .overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .overlay.show { display: flex; }
+  .dialog {
+    background: #fff;
+    border-radius: var(--radius);
+    padding: 28px;
+    max-width: 360px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,.2);
+    animation: fadeIn .2s;
+  }
+  .dialog h3   { font-size: 17px; margin-bottom: 10px; }
+  .dialog p    { font-size: 14px; color: var(--muted); margin-bottom: 24px; }
+  .dialog-btns { display: flex; gap: 10px; }
+  .dialog-btns .btn-cancel {
+    flex: 1; padding: 11px;
+    background: #f1f5f9; color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer;
+  }
+  .dialog-btns .btn-confirm {
+    flex: 1; padding: 11px;
+    background: var(--danger); color: #fff;
+    border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .dialog-btns .btn-confirm:hover { background: var(--danger-h); }
+
+  @media (max-width: 600px) {
+    header h1 { font-size: 16px; }
+    .tab      { padding: 12px 12px; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">✈️</span>
+  <div>
+    <h1>Турагентство — Отдел продаж</h1>
+    <span>CRM система</span>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-page="form" onclick="showPage(this)">📝 Новая запись</div>
+  <div class="tab"        data-page="dash" onclick="showPage(this)">📊 Дашборд</div>
+  <div class="tab"        data-page="mgr"  onclick="showPage(this)">👥 Менеджеры</div>
+</div>
+
+<main>
+
+  <!-- ══════════ ФОРМА ══════════ -->
+  <div id="page-form" class="page active">
+    <div class="card">
+      <div class="card-title">✏️ Добавить продажу</div>
+
+      <div id="form-toast" class="toast"></div>
+
+      <div class="form-group">
+        <label>Номер договора</label>
+        <input id="contractNumber" type="text" placeholder="Например: ДГВ-2024-001" />
+      </div>
+
+      <div class="form-group">
+        <label>Менеджер</label>
+        <select id="manager">
+          <option value="">— Выберите менеджера —</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Количество продаж</label>
+        <input id="salesCount" type="number" min="1" value="1" />
+      </div>
+
+      <button class="btn" id="submitBtn" onclick="submitForm()">
+        💾 Сохранить запись
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════ ДАШБОРД ══════════ -->
+  <div id="page-dash" class="page">
+    <div id="dash-loader" class="loader">⏳ Загрузка данных...</div>
+    <div id="dash-content" style="display:none">
+
+      <div class="week-label" id="weekLabel">📅 Текущая неделя</div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="number" id="totalContracts">—</div>
+          <div class="label">📄 Договоров за неделю</div>
+        </div>
+        <div class="stat-card">
+          <div class="number" id="totalSales">—</div>
+          <div class="label">🛒 Продаж за неделю</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">👥 По менеджерам</div>
+        <div id="mgrEmpty" class="empty" style="display:none">
+          <div class="icon">📭</div>
+          <p>Записей за эту неделю пока нет</p>
+        </div>
+        <div class="table-wrap" id="mgrTable"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📈 Договоров по неделям</div>
+        <div id="chartWrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ МЕНЕДЖЕРЫ ══════════ -->
+  <div id="page-mgr" class="page">
+    <div class="card">
+      <div class="card-title">➕ Добавить менеджера</div>
+
+      <div id="mgr-toast" class="toast"></div>
+
+      <div class="add-row">
+        <input id="newManagerName" type="text" placeholder="Имя менеджера" onkeydown="if(event.key==='Enter') addManagerClick()" />
+        <button class="btn btn-add" id="addMgrBtn" onclick="addManagerClick()">Добавить</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 Список менеджеров</div>
+      <div id="mgr-loader" class="loader">⏳ Загрузка...</div>
+      <ul class="manager-list" id="managerList" style="display:none"></ul>
+      <div id="mgr-list-empty" class="managers-empty" style="display:none">
+        Менеджеров пока нет. Добавьте первого выше.
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ══════════ ДИАЛОГ ПОДТВЕРЖДЕНИЯ ══════════ -->
+<div class="overlay" id="confirmOverlay">
+  <div class="dialog">
+    <h3>Удалить менеджера?</h3>
+    <p id="confirmText">Менеджер будет удалён из списка. Данные в таблице сохранятся.</p>
+    <div class="dialog-btns">
+      <button class="btn-cancel"  onclick="closeConfirm()">Отмена</button>
+      <button class="btn-confirm" onclick="confirmDelete()">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Состояние ─────────────────────────────────────────
+let pendingDelete = null;
+
+// ── Переключение вкладок ──────────────────────────────
+function showPage(tab) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab') .forEach(t => t.classList.remove('active'));
+  const name = tab.dataset.page;
+  document.getElementById('page-' + name).classList.add('active');
+  tab.classList.add('active');
+  if (name === 'dash') loadDashboard();
+  if (name === 'mgr')  loadManagersList();
+}
+
+// ── Загрузка при старте ───────────────────────────────
+window.onload = function () {
+  google.script.run
+    .withSuccessHandler(fillManagerSelect)
+    .getManagers();
+};
+
+function fillManagerSelect(managers) {
+  const sel = document.getElementById('manager');
+  sel.innerHTML = '<option value="">— Выберите менеджера —</option>';
+  managers.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = opt.textContent = m;
+    sel.appendChild(opt);
+  });
+}
+
+// ── Форма продажи ─────────────────────────────────────
+function submitForm() {
+  const contractNumber = document.getElementById('contractNumber').value.trim();
+  const manager        = document.getElementById('manager').value;
+  const salesCount     = document.getElementById('salesCount').value;
+
+  if (!contractNumber)           { showToast('form-toast', 'Введите номер договора', 'error'); return; }
+  if (!manager)                  { showToast('form-toast', 'Выберите менеджера', 'error');      return; }
+  if (!salesCount || salesCount < 1) { showToast('form-toast', 'Укажите количество продаж', 'error'); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Сохраняем...';
+
+  google.script.run
+    .withSuccessHandler(res => {
+      btn.disabled = false;
+      btn.textContent = '💾 Сохранить запись';
+      if (res.success) {
+        showToast('form-toast', '✅ Запись сохранена в таблицу!', 'success');
+        document.getElementById('contractNumber').value = '';
+        document.getElementById('manager').value        = '';
+        document.getElementById('salesCount').value     = '1';
+      } else {
+        showToast('form-toast', 'Ошибка: ' + res.error, 'error');
+      }
+    })
+    .withFailureHandler(() => {
+      btn.disabled = false;
+      btn.textContent = '💾 Сохранить запись';
+      showToast('form-toast', 'Ошибка соединения', 'error');
+    })
+    .addSale({ contractNumber, manager, salesCount: Number(salesCount) });
+}
+
+// ── Дашборд ───────────────────────────────────────────
+function loadDashboard() {
+  document.getElementById('dash-loader') .style.display = 'block';
+  document.getElementById('dash-content').style.display = 'none';
+  google.script.run.withSuccessHandler(renderDashboard).getWeeklyStats();
+  google.script.run.withSuccessHandler(renderChart).getAllWeeksStats();
+}
+
+function renderDashboard(data) {
+  document.getElementById('dash-loader') .style.display = 'none';
+  document.getElementById('dash-content').style.display = 'block';
+  document.getElementById('weekLabel')     .textContent = '📅 ' + data.weekStart + ' — ' + data.weekEnd;
+  document.getElementById('totalContracts').textContent = data.totalContracts;
+  document.getElementById('totalSales')    .textContent = data.totalSales;
+
+  const managers = Object.entries(data.stats);
+  const tableDiv = document.getElementById('mgrTable');
+  const emptyDiv = document.getElementById('mgrEmpty');
+
+  if (!managers.length) {
+    emptyDiv.style.display = 'block';
+    tableDiv.style.display = 'none';
+    return;
+  }
+  emptyDiv.style.display = 'none';
+  tableDiv.style.display = 'block';
+
+  const maxC = Math.max(...managers.map(([,v]) => v.contracts), 1);
+  managers.sort((a, b) => b[1].contracts - a[1].contracts);
+
+  tableDiv.innerHTML = '<table><thead><tr><th>#</th><th>Менеджер</th><th>Договоров</th><th>Продаж</th><th style="min-width:120px">Доля</th></tr></thead><tbody>'
+    + managers.map(([name, v], i) => {
+        const pct = Math.round((v.contracts / maxC) * 100);
+        return `<tr>
+          <td><strong>${i+1}</strong></td>
+          <td>${name}</td>
+          <td><span class="badge">${v.contracts}</span></td>
+          <td>${v.sales}</td>
+          <td><div class="bar-wrap"><div class="bar" style="width:${pct}%"></div></div></td>
+        </tr>`;
+      }).join('')
+    + '</tbody></table>';
+}
+
+function renderChart(data) {
+  if (!data.success || !data.weeks.length) return;
+  const max = Math.max(...data.weeks.map(w => w.contracts), 1);
+  document.getElementById('chartWrap').innerHTML =
+    '<div class="chart-wrap">'
+    + data.weeks.map(w => {
+        const h = Math.round((w.contracts / max) * 88);
+        return `<div class="chart-col" title="${w.label}: ${w.contracts}">
+          <div class="chart-bar" style="height:${h}px"></div>
+          <div class="chart-lbl">${w.label.slice(0,5)}</div>
+        </div>`;
+      }).join('')
+    + '</div>';
+}
+
+// ── Менеджеры: загрузка списка ────────────────────────
+function loadManagersList() {
+  document.getElementById('mgr-loader')    .style.display = 'block';
+  document.getElementById('managerList')   .style.display = 'none';
+  document.getElementById('mgr-list-empty').style.display = 'none';
+  google.script.run
+    .withSuccessHandler(renderManagersList)
+    .withFailureHandler(err => {
+      document.getElementById('mgr-loader').textContent = '❌ Ошибка загрузки: ' + (err.message || err);
+    })
+    .getManagers();
+}
+
+function renderManagersList(managers) {
+  document.getElementById('mgr-loader').style.display = 'none';
+  const list  = document.getElementById('managerList');
+  const empty = document.getElementById('mgr-list-empty');
+
+  if (!managers.length) {
+    empty.style.display = 'block';
+    list.style.display  = 'none';
+    return;
+  }
+
+  list.style.display  = 'block';
+  empty.style.display = 'none';
+  list.innerHTML = managers.map(m => `
+    <li class="manager-item">
+      <div class="manager-name">
+        <div class="avatar">${m.charAt(0).toUpperCase()}</div>
+        ${m}
+      </div>
+      <button class="btn-delete" onclick="askDelete('${m.replace(/'/g,"\\'")}')">🗑 Удалить</button>
+    </li>
+  `).join('');
+}
+
+// ── Менеджеры: добавить ───────────────────────────────
+function addManagerClick() {
+  const input = document.getElementById('newManagerName');
+  const btn   = document.getElementById('addMgrBtn');
+  const name  = input.value.trim();
+  if (!name) { showToast('mgr-toast', 'Введите имя менеджера', 'error'); return; }
+
+  btn.disabled    = true;
+  btn.textContent = '⏳ Добавляем...';
+
+  google.script.run
+    .withSuccessHandler(res => {
+      btn.disabled    = false;
+      btn.textContent = 'Добавить';
+      if (res.success) {
+        input.value = '';
+        showToast('mgr-toast', '✅ Менеджер добавлен', 'success');
+        renderManagersList(res.managers);
+        fillManagerSelect(res.managers);
+      } else {
+        showToast('mgr-toast', '❌ ' + res.error, 'error');
+      }
+    })
+    .withFailureHandler(err => {
+      btn.disabled    = false;
+      btn.textContent = 'Добавить';
+      showToast('mgr-toast', '❌ Ошибка: ' + (err.message || err), 'error');
+    })
+    .addManager(name);
+}
+
+// ── Менеджеры: удалить (с подтверждением) ────────────
+function askDelete(name) {
+  pendingDelete = name;
+  document.getElementById('confirmText').textContent =
+    `Удалить "${name}"? Данные о продажах в таблице сохранятся.`;
+  document.getElementById('confirmOverlay').classList.add('show');
+}
+
+function closeConfirm() {
+  pendingDelete = null;
+  document.getElementById('confirmOverlay').classList.remove('show');
+}
+
+function confirmDelete() {
+  if (!pendingDelete) return;
+  const name = pendingDelete;
+  closeConfirm();
+
+  google.script.run
+    .withSuccessHandler(res => {
+      if (res.success) {
+        showToast('mgr-toast', `✅ "${name}" удалён`, 'success');
+        renderManagersList(res.managers);
+        fillManagerSelect(res.managers);
+      } else {
+        showToast('mgr-toast', '❌ ' + res.error, 'error');
+      }
+    })
+    .withFailureHandler(err => {
+      showToast('mgr-toast', '❌ Ошибка: ' + (err.message || err), 'error');
+    })
+    .removeManager(name);
+}
+
+// ── Toast ─────────────────────────────────────────────
+function showToast(id, msg, type) {
+  const t = document.getElementById(id);
+  t.className     = 'toast ' + type;
+  t.textContent   = msg;
+  t.style.display = 'flex';
+  setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+</script>
+</body>
+</html>
