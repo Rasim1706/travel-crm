@@ -13,12 +13,6 @@ function DonutChart({ data }) {
   const R = 62, r = 38, cx = 80, cy = 80
 
   function arcPath(startPct, pct) {
-    if (pct >= 0.9999) {
-      return [
-        `M ${cx} ${cy - R} A ${R} ${R} 0 1 1 ${cx - 0.001} ${cy - R} Z`,
-        `M ${cx} ${cy - r} A ${r} ${r} 0 1 0 ${cx - 0.001} ${cy - r} Z`,
-      ].join(' ')
-    }
     const a1 = startPct * 2 * Math.PI - Math.PI / 2
     const a2 = (startPct + pct) * 2 * Math.PI - Math.PI / 2
     const x1 = cx + R * Math.cos(a1), y1 = cy + R * Math.sin(a1)
@@ -37,6 +31,9 @@ function DonutChart({ data }) {
     return s
   })
 
+  // Единственный сегмент — рисуем двумя кругами
+  const isSingle = slices.length === 1
+
   function handleMouseMove(e, slice) {
     const rect = e.currentTarget.closest('svg').getBoundingClientRect()
     setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top })
@@ -48,7 +45,15 @@ function DonutChart({ data }) {
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <svg width={160} height={160}
           onMouseLeave={() => setHovered(null)}>
-          {slices.map((s, i) => (
+          {isSingle ? (
+            <g
+              style={{ cursor: 'pointer' }}
+              onMouseMove={e => handleMouseMove(e, slices[0])}
+            >
+              <circle cx={cx} cy={cy} r={R} fill={slices[0].color} />
+              <circle cx={cx} cy={cy} r={r} fill="#fff" />
+            </g>
+          ) : slices.map((s, i) => (
             <path
               key={i}
               d={arcPath(s.offset, s.pct)}
@@ -98,6 +103,29 @@ function DonutChart({ data }) {
   )
 }
 
+function TopList({ items, color }) {
+  if (!items.length) return (
+    <div className="empty"><div className="empty-icon">📭</div><p>Нет данных за выбранный период</p></div>
+  )
+  const max = items[0].count
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {items.map((item, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 22, height: 22, borderRadius: 6, background: i === 0 ? color : 'rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: i === 0 ? '#fff' : 'var(--muted)', flexShrink: 0 }}>{i + 1}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</div>
+            <div style={{ marginTop: 4, background: 'rgba(0,0,0,0.06)', borderRadius: 999, height: 5, overflow: 'hidden' }}>
+              <div style={{ height: '100%', borderRadius: 999, background: color, width: `${Math.round(item.count / max * 100)}%`, transition: 'width .5s' }} />
+            </div>
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 700, color, flexShrink: 0 }}>{item.count}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function getMonthBounds(year, month) {
   const from = new Date(year, month, 1)
   const to   = new Date(year, month + 1, 0)
@@ -141,7 +169,8 @@ export default function Dashboard() {
   const [editingId,  setEditingId]  = useState(null)
   const [editVal,    setEditVal]    = useState('')
   const [saving,     setSaving]     = useState(false)
-  const [deletingId, setDeletingId] = useState(null)
+  const [deletingId,    setDeletingId]    = useState(null)
+  const [callListOpen,  setCallListOpen]  = useState(true)
 
   useEffect(() => {
     api.getSales()
@@ -155,22 +184,56 @@ export default function Dashboard() {
   const to   = new Date(dateTo   + 'T23:59:59')
 
   const filtered = sales.filter(s => {
-    const d = new Date(s.date)
-    return !isNaN(d) && d >= from && d <= to
+    const d  = new Date(s.date)
+    const bd = s.bookingDate ? new Date(s.bookingDate) : null
+    return (!isNaN(d) && d >= from && d <= to) ||
+           (bd && !isNaN(bd) && bd >= from && bd <= to)
   })
 
   // ── Статистика по выбранному периоду ─────────────
-  let totalContracts = 0, totalSales = 0
+  let totalContracts = 0, totalSales = 0, totalCommission = 0, totalPrepayment = 0, totalDebt = 0
+  let hasPrepayment = false
   filtered.forEach(s => {
     totalContracts++
     totalSales += s.salesCount
+    if (s.balance != null)     totalCommission  += s.balance
+    if (s.prepayment != null)  { totalPrepayment += s.prepayment;  hasPrepayment = true }
+    if (s.debt != null)        { totalDebt       += s.debt }
   })
+
+  // ── Клиенты которым нужно позвонить (последняя покупка > 3 мес) ──
+  const threeMonthsAgo = new Date()
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+
+  const clientLastSale = {}
+  sales.forEach(s => {
+    if (!s.clientName) return
+    // Используем дату брони если есть, иначе дату добавления записи
+    const d = s.bookingDate ? new Date(s.bookingDate) : new Date(s.date)
+    if (isNaN(d)) return
+    if (!clientLastSale[s.clientName] || d > clientLastSale[s.clientName].date) {
+      clientLastSale[s.clientName] = { date: d, direction: s.direction, manager: s.manager, phone: s.phone || '' }
+    }
+  })
+  const callReminders = Object.entries(clientLastSale)
+    .filter(([, v]) => v.date < threeMonthsAgo)
+    .sort((a, b) => a[1].date - b[1].date)
+    .map(([name, v]) => ({ name, ...v }))
+
+  // ── Топ направлений и отелей (по выбранному периоду) ──
+  const dirMap = {}, hotelMap = {}
+  filtered.forEach(s => {
+    if (s.direction) dirMap[s.direction] = (dirMap[s.direction] || 0) + 1
+    if (s.hotel)     hotelMap[s.hotel]   = (hotelMap[s.hotel]   || 0) + 1
+  })
+  const topDirections = Object.entries(dirMap).sort((a,b) => b[1]-a[1]).slice(0,8).map(([label,count]) => ({ label, count }))
+  const topHotels     = Object.entries(hotelMap).sort((a,b) => b[1]-a[1]).slice(0,8).map(([label,count]) => ({ label, count }))
 
   // ── Данные для кругового графика (выбранный месяц) ──
   const { from: monthFrom, to: monthTo } = getMonthBounds(pieYear, pieMonth)
   const monthSalesMap = {}
   sales.forEach(s => {
-    const d = new Date(s.date)
+    const d = s.bookingDate ? new Date(s.bookingDate) : new Date(s.date)
     if (isNaN(d) || d < monthFrom || d > monthTo) return
     if (!monthSalesMap[s.manager]) monthSalesMap[s.manager] = 0
     monthSalesMap[s.manager] += s.salesCount
@@ -220,6 +283,93 @@ export default function Dashboard() {
 
   return (
     <>
+      {/* ── Уведомление: кому позвонить ── */}
+      {callReminders.length > 0 && (
+        <div style={{
+          background: 'linear-gradient(135deg, #fff7ed, #fff)',
+          border: '1.5px solid #fed7aa',
+          borderRadius: 20,
+          marginBottom: 16,
+          overflow: 'hidden',
+        }}>
+          <button
+            onClick={() => setCallListOpen(o => !o)}
+            style={{
+              width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+              padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 10,
+              fontFamily: 'inherit',
+            }}
+          >
+            <span style={{ fontSize: 20 }}>📞</span>
+            <span style={{ fontWeight: 700, fontSize: 15, color: '#9a3412', flex: 1, textAlign: 'left' }}>
+              Нужно позвонить
+            </span>
+            <span style={{
+              background: '#f97316', color: '#fff', borderRadius: 980,
+              fontSize: 12, fontWeight: 700, padding: '2px 10px',
+            }}>
+              {callReminders.length}
+            </span>
+            <span style={{ color: '#f97316', fontSize: 18, marginLeft: 4 }}>
+              {callListOpen ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {callListOpen && (
+            <div style={{ padding: '0 20px 16px' }}>
+              <p style={{ fontSize: 12, color: '#c2410c', marginBottom: 12 }}>
+                Клиенты, которые не покупали более 3 месяцев — предложите новое направление
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {callReminders.map((c, i) => {
+                  const months = Math.floor((Date.now() - c.date) / (1000 * 60 * 60 * 24 * 30))
+                  return (
+                    <div key={i} style={{
+                      background: '#fff', borderRadius: 12, padding: '12px 14px',
+                      border: '1px solid #fed7aa',
+                      display: 'flex', alignItems: 'center', gap: 12,
+                    }}>
+                      <div style={{
+                        width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
+                        background: 'linear-gradient(135deg, #f97316, #ef4444)',
+                        color: '#fff', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontWeight: 700, fontSize: 14,
+                      }}>
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</div>
+                        <div style={{ fontSize: 12, color: '#9a3412', marginTop: 2 }}>
+                          {c.direction && `✈️ ${c.direction} · `}
+                          менеджер: {c.manager}
+                        </div>
+                        {c.phone && (
+                          <a href={`tel:${c.phone}`} style={{
+                            display: 'inline-block', marginTop: 4,
+                            fontSize: 12, fontWeight: 600,
+                            color: '#007aff', textDecoration: 'none',
+                          }}>
+                            📱 {c.phone}
+                          </a>
+                        )}
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{
+                          background: '#ffedd5', color: '#c2410c', borderRadius: 8,
+                          fontSize: 11, fontWeight: 700, padding: '3px 8px',
+                        }}>
+                          {months} мес. назад
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Диапазон дат ── */}
       <div className="card">
         <div className="card-title">📅 Период</div>
@@ -252,6 +402,40 @@ export default function Dashboard() {
           <div className="stat-number">{totalSales}</div>
           <div className="stat-label">🛒 Продаж</div>
         </div>
+        <div className="stat-card" style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1.5px solid #86efac' }}>
+          <div className="stat-number" style={{ color: '#15803d', fontSize: 20 }}>
+            {totalCommission.toLocaleString('ru-RU')} $
+          </div>
+          <div className="stat-label">💵 Комиссия</div>
+        </div>
+        {hasPrepayment && (
+          <>
+            <div className="stat-card" style={{ background: 'linear-gradient(135deg, #eff6ff, #dbeafe)', border: '1.5px solid #93c5fd' }}>
+              <div className="stat-number" style={{ color: '#1d4ed8', fontSize: 20 }}>
+                {totalPrepayment.toLocaleString('ru-RU')}
+              </div>
+              <div className="stat-label">💳 Предоплата</div>
+            </div>
+            <div className="stat-card" style={{ background: totalDebt > 0 ? 'linear-gradient(135deg, #fff7ed, #fff)' : 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: `1.5px solid ${totalDebt > 0 ? '#fed7aa' : '#86efac'}` }}>
+              <div className="stat-number" style={{ color: totalDebt > 0 ? '#ea580c' : '#15803d', fontSize: 20 }}>
+                {totalDebt.toLocaleString('ru-RU')}
+              </div>
+              <div className="stat-label">⏳ Долг клиентов</div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Топ направлений и отелей ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 16 }}>
+        <div className="card" style={{ marginBottom: 0 }}>
+          <div className="card-title">🌍 Топ направлений</div>
+          <TopList items={topDirections} color="#007aff" />
+        </div>
+        <div className="card" style={{ marginBottom: 0 }}>
+          <div className="card-title">🏨 Топ отелей</div>
+          <TopList items={topHotels} color="#5856d6" />
+        </div>
       </div>
 
       {/* ── Круговой график по месяцам ── */}
@@ -282,27 +466,68 @@ export default function Dashboard() {
         <div className="card-title">👥 По менеджерам</div>
         {filtered.length === 0 ? (
           <div className="empty"><div className="empty-icon">📭</div><p>Нет данных за выбранный период</p></div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th><th>Менеджер</th><th>Номер договора</th><th>Продаж</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((s, i) => (
-                  <tr key={s.id}>
-                    <td><strong>{i + 1}</strong></td>
-                    <td>{s.manager}</td>
-                    <td>{s.contractNumber}</td>
-                    <td><span className="badge">{s.salesCount}</span></td>
+        ) : (() => {
+          // Агрегация по менеджерам
+          const mgrMap = {}
+          filtered.forEach(s => {
+            if (!s.manager) return
+            if (!mgrMap[s.manager]) mgrMap[s.manager] = { contracts: 0, people: 0, balance: null, prepayment: null, debt: null }
+            const m = mgrMap[s.manager]
+            m.contracts++
+            m.people += s.salesCount || 0
+            if (s.balance    != null) m.balance    = (m.balance    || 0) + s.balance
+            if (s.prepayment != null) m.prepayment = (m.prepayment || 0) + s.prepayment
+            if (s.debt       != null) m.debt       = (m.debt       || 0) + s.debt
+          })
+          const rows = Object.entries(mgrMap).sort((a, b) => b[1].contracts - a[1].contracts)
+          const showFinance = rows.some(([, m]) => m.prepayment !== null)
+          return (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Менеджер</th>
+                    <th style={{ textAlign: 'center' }}>Заявок</th>
+                    <th style={{ textAlign: 'center' }}>Людей</th>
+                    <th>Комиссия ($)</th>
+                    {showFinance && <th>Предоплата</th>}
+                    {showFinance && <th>Долг</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {rows.map(([name, m], i) => (
+                    <tr key={name}>
+                      <td><strong>{i + 1}</strong></td>
+                      <td style={{ fontWeight: 600 }}>{name}</td>
+                      <td style={{ textAlign: 'center' }}><span className="badge">{m.contracts}</span></td>
+                      <td style={{ textAlign: 'center' }}><span className="badge">{m.people}</span></td>
+                      <td>
+                        {m.balance == null ? (
+                          <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
+                        ) : (
+                          <span style={{ fontWeight: 700, fontSize: 13, color: m.balance >= 0 ? '#16a34a' : '#dc2626' }}>
+                            {m.balance.toLocaleString('ru-RU')} $
+                          </span>
+                        )}
+                      </td>
+                      {showFinance && (
+                        <td style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>
+                          {m.prepayment != null ? m.prepayment.toLocaleString('ru-RU') : '—'}
+                        </td>
+                      )}
+                      {showFinance && (
+                        <td style={{ fontSize: 13, fontWeight: 600, color: m.debt > 0 ? '#ea580c' : '#16a34a' }}>
+                          {m.debt != null ? m.debt.toLocaleString('ru-RU') : '—'}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        })()}
       </div>
 
       {/* ── Записи за период ── */}
