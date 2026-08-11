@@ -2,7 +2,10 @@ import { useState } from 'react'
 import { api } from '../api'
 
 export default function Register({ onRegister, onBack }) {
+  const AVATARS = ['🏢','✈️','🌴','🌊','🏖️','🌍','🧳','🗺️','🛫','🏝️','⛵','🌅']
+
   const [agencyName,       setAgencyName]       = useState('')
+  const [avatar,           setAvatar]           = useState('🏢')
   const [email,            setEmail]            = useState('')
   const [login,            setLogin]            = useState('')
   const [password,         setPassword]         = useState('')
@@ -26,7 +29,7 @@ export default function Register({ onRegister, onBack }) {
     setLoading(true); setError('')
     try {
       const r = await api.register({
-        agencyName, login, password,
+        agencyName, login, password, avatar,
         email: email.trim() || undefined,
         existingSheetUrl: existingSheetUrl.trim() || undefined,
       })
@@ -111,6 +114,30 @@ export default function Register({ onRegister, onBack }) {
           <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
             Информация об агентстве
           </div>
+
+          {/* Emoji аватарка */}
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>Логотип-эмодзи</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {AVATARS.map(em => (
+                <button
+                  key={em}
+                  type="button"
+                  onClick={() => setAvatar(em)}
+                  style={{
+                    width: 42, height: 42, borderRadius: 12, border: 'none',
+                    fontSize: 22, cursor: 'pointer', transition: 'all .15s',
+                    background: avatar === em ? 'var(--primary)' : '#f1f5f9',
+                    boxShadow: avatar === em ? '0 2px 8px rgba(0,122,255,0.4)' : 'none',
+                    transform: avatar === em ? 'scale(1.12)' : 'scale(1)',
+                  }}
+                >
+                  {em}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <input
             className="input"
             placeholder="Название агентства *"

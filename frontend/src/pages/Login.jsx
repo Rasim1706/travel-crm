@@ -19,7 +19,8 @@ export default function Login({ onLogin, onRegister }) {
         sessionStorage.setItem('crm_name',        r.name)
         sessionStorage.setItem('crm_agency_id',   r.agencyId || 'default')
         sessionStorage.setItem('crm_spreadsheet', r.spreadsheetId || '')
-        onLogin({ token: r.token, role: r.role, name: r.name, agencyId: r.agencyId || 'default', spreadsheetId: r.spreadsheetId || '' })
+        sessionStorage.setItem('crm_avatar',      r.avatar || '🏢')
+        onLogin({ token: r.token, role: r.role, name: r.name, agencyId: r.agencyId || 'default', spreadsheetId: r.spreadsheetId || '', avatar: r.avatar || '🏢' })
       } else {
         setError(r.error || 'Неверный логин или пароль')
       }

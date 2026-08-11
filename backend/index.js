@@ -11,6 +11,9 @@ app.use(express.json());
 // Мастер-таблица: хранит список агентств + глобальные аккаунты
 const MASTER_SPREADSHEET_ID = '1EcmuWFgyBLp3BH5RxWC50iAmTarnz9dosFZnE7ZQQlY';
 
+// Пароль разработчика (суперадмин-панель)
+const DEV_SECRET = process.env.DEV_SECRET || 'rasim-dev-2026';
+
 const SALES_SHEET      = 'Продажи';
 const DIRECTIONS_SHEET = 'Направления';
 const HOTELS_SHEET     = 'Отели';
@@ -109,12 +112,15 @@ async function setupAgencySheet(sheets, spreadsheetId, agencyName) {
   }
 }
 
+// Агентства: A=AgencyID B=Название C=Email D=SpreadsheetID E=SpreadsheetURL F=Дата G=Avatar
+const AGENCIES_HEADERS = ['AgencyID', 'Название', 'Email', 'SpreadsheetID', 'SpreadsheetURL', 'Дата', 'Avatar'];
+
 // ── Получить spreadsheetId агентства ─────────────────
 async function getAgencySpreadsheetId(sheets, agencyId) {
   if (!agencyId || agencyId === 'default') return MASTER_SPREADSHEET_ID;
   try {
-    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, AGENCIES_SHEET, ['AgencyID', 'Название', 'Email', 'SpreadsheetID', 'SpreadsheetURL', 'Дата']);
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A2:F` });
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, AGENCIES_SHEET, AGENCIES_HEADERS);
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A2:G` });
     const row = (r.data.values || []).find(row => row[0] === agencyId);
     return row ? (row[3] || MASTER_SPREADSHEET_ID) : MASTER_SPREADSHEET_ID;
   } catch {
@@ -158,12 +164,12 @@ function sessionSpreadsheetId(req) {
 
 app.post('/api/register', async (req, res) => {
   try {
-    const { agencyName, login, password, email, existingSheetUrl } = req.body;
+    const { agencyName, login, password, email, existingSheetUrl, avatar = '🏢' } = req.body;
     if (!agencyName?.trim() || !login?.trim() || !password)
       return res.json({ success: false, error: 'Заполните все поля' });
 
     const sheets = await getSheets();
-    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, AGENCIES_SHEET, ['AgencyID', 'Название', 'Email', 'SpreadsheetID', 'SpreadsheetURL', 'Дата']);
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, AGENCIES_SHEET, AGENCIES_HEADERS);
     await ensureSheet(sheets, MASTER_SPREADSHEET_ID, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
 
     // Проверяем уникальность логина глобально
@@ -220,8 +226,8 @@ app.post('/api/register', async (req, res) => {
 
     // Записываем агентство в мастер-таблицу
     await sheets.spreadsheets.values.append({
-      spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A:F`, valueInputOption: 'RAW',
-      requestBody: { values: [[agencyId, agencyName.trim(), email?.trim() || '', spreadsheetId, spreadsheetUrl, now]] },
+      spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A:G`, valueInputOption: 'RAW',
+      requestBody: { values: [[agencyId, agencyName.trim(), email?.trim() || '', spreadsheetId, spreadsheetUrl, now, avatar]] },
     });
 
     // Записываем аккаунт администратора в мастер-таблицу
@@ -230,10 +236,10 @@ app.post('/api/register', async (req, res) => {
       requestBody: { values: [[login.trim(), hashPwd(password), 'Администратор', 'admin', agencyId]] },
     });
 
-    const token = signToken({ login: login.trim(), role: 'admin', name: 'Администратор', agencyId, spreadsheetId });
+    const token = signToken({ login: login.trim(), role: 'admin', name: 'Администратор', agencyId, spreadsheetId, avatar });
     res.json({
       success: true, token, role: 'admin', name: 'Администратор',
-      agencyId, spreadsheetId, spreadsheetUrl, agencyName: agencyName.trim(),
+      agencyId, spreadsheetId, spreadsheetUrl, agencyName: agencyName.trim(), avatar,
     });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
@@ -265,11 +271,19 @@ app.post('/api/auth/login', async (req, res) => {
     const name     = found[2] || login.trim();
     const agencyId = found[4] || 'default';
 
-    // Получаем spreadsheetId этого агентства
+    // Получаем spreadsheetId и аватарку агентства
     const spreadsheetId = await getAgencySpreadsheetId(sheets, agencyId);
+    let avatar = '🏢';
+    if (agencyId !== 'default') {
+      try {
+        const ar = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A2:G` });
+        const agRow = (ar.data.values || []).find(r => r[0] === agencyId);
+        if (agRow?.[6]) avatar = agRow[6];
+      } catch {}
+    }
 
-    const token = signToken({ login: login.trim(), role, name, agencyId, spreadsheetId });
-    res.json({ success: true, token, role, name, agencyId, spreadsheetId });
+    const token = signToken({ login: login.trim(), role, name, agencyId, spreadsheetId, avatar });
+    res.json({ success: true, token, role, name, agencyId, spreadsheetId, avatar });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
@@ -614,6 +628,97 @@ app.delete('/api/sales/:id', async (req, res) => {
       spreadsheetId,
       requestBody: { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: rowIndex - 1, endIndex: rowIndex } } }] },
     });
+    res.json({ success: true });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════
+//  DEV ADMIN (суперадмин разработчика)
+// ════════════════════════════════════════════════════
+
+function devAuth(req, res, next) {
+  const token = verifyToken((req.headers.authorization || '').replace('Bearer ', ''));
+  if (!token || token.role !== 'superadmin') return res.status(403).json({ success: false, error: 'Нет доступа' });
+  next();
+}
+
+app.post('/api/dev/login', (req, res) => {
+  const { password } = req.body;
+  if (password !== DEV_SECRET) return res.json({ success: false, error: 'Неверный пароль' });
+  const token = signToken({ role: 'superadmin', name: 'Developer' });
+  res.json({ success: true, token });
+});
+
+app.get('/api/dev/agencies', devAuth, async (req, res) => {
+  try {
+    const sheets = await getSheets();
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, AGENCIES_SHEET, AGENCIES_HEADERS);
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+
+    const [agR, acR] = await Promise.all([
+      sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A2:G` }),
+      sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` }),
+    ]);
+
+    const accounts = acR.data.values || [];
+    const agencies = (agR.data.values || []).map(row => ({
+      id:            row[0] || '',
+      name:          row[1] || '',
+      email:         row[2] || '',
+      spreadsheetId: row[3] || '',
+      spreadsheetUrl:row[4] || '',
+      createdAt:     row[5] || '',
+      avatar:        row[6] || '🏢',
+      accountCount:  accounts.filter(a => (a[4] || 'default') === (row[0] || '')).length,
+    }));
+
+    // Добавляем «default» агентство (старые данные)
+    const defaultAccounts = accounts.filter(a => !a[4] || a[4] === 'default');
+    if (defaultAccounts.length > 0) {
+      agencies.unshift({
+        id: 'default', name: '(Основное / без регистрации)', email: '', avatar: '🏠',
+        spreadsheetId: MASTER_SPREADSHEET_ID,
+        spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${MASTER_SPREADSHEET_ID}/edit`,
+        createdAt: '', accountCount: defaultAccounts.length,
+      });
+    }
+
+    res.json({ success: true, agencies });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+app.delete('/api/dev/agencies/:agencyId', devAuth, async (req, res) => {
+  const agencyId = req.params.agencyId;
+  if (agencyId === 'default') return res.json({ success: false, error: 'Нельзя удалить основное агентство' });
+  try {
+    const sheets = await getSheets();
+    const meta   = await sheets.spreadsheets.get({ spreadsheetId: MASTER_SPREADSHEET_ID });
+
+    // Удаляем из Агентства
+    const agSheet = meta.data.sheets.find(s => s.properties.title === AGENCIES_SHEET);
+    if (agSheet) {
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A2:A` });
+      const idx = (r.data.values || []).findIndex(row => row[0] === agencyId);
+      if (idx >= 0) {
+        await sheets.spreadsheets.batchUpdate({ spreadsheetId: MASTER_SPREADSHEET_ID, requestBody: { requests: [{
+          deleteDimension: { range: { sheetId: agSheet.properties.sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } }
+        }] } });
+      }
+    }
+
+    // Удаляем аккаунты этого агентства из Аккаунты (с конца, чтобы не сбивались индексы)
+    const acSheet = meta.data.sheets.find(s => s.properties.title === ACCOUNTS_SHEET);
+    if (acSheet) {
+      const r2 = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+      const rows = r2.data.values || [];
+      const toDelete = rows.map((row, i) => i).filter(i => (rows[i][4] || 'default') === agencyId).reverse();
+      for (const i of toDelete) {
+        await sheets.spreadsheets.batchUpdate({ spreadsheetId: MASTER_SPREADSHEET_ID, requestBody: { requests: [{
+          deleteDimension: { range: { sheetId: acSheet.properties.sheetId, dimension: 'ROWS', startIndex: i + 1, endIndex: i + 2 } }
+        }] } });
+      }
+    }
+
     res.json({ success: true });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
