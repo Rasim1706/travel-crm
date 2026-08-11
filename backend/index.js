@@ -10,11 +10,11 @@ app.use(express.json());
 
 const SPREADSHEET_ID   = '1EcmuWFgyBLp3BH5RxWC50iAmTarnz9dosFZnE7ZQQlY';
 const SALES_SHEET      = 'Продажи';
-const MANAGERS_SHEET   = 'Менеджеры';
 const DIRECTIONS_SHEET = 'Направления';
 const HOTELS_SHEET     = 'Отели';
 const SOURCES_SHEET    = 'Источники';
 const ACCOUNTS_SHEET   = 'Аккаунты';
+const AGENCIES_SHEET   = 'Агентства';
 
 const MONTH_NAMES_RU = [
   'Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -82,6 +82,42 @@ app.use((req, res, next) => {
 });
 
 // ════════════════════════════════════════════════════
+//  РЕГИСТРАЦИЯ АГЕНТСТВА
+// ════════════════════════════════════════════════════
+
+app.post('/api/register', async (req, res) => {
+  try {
+    const { agencyName, login, password } = req.body;
+    if (!agencyName?.trim() || !login?.trim() || !password)
+      return res.json({ success: false, error: 'Заполните все поля' });
+
+    const sheets = await getSheets();
+    await ensureSheet(sheets, AGENCIES_SHEET, ['ID агентства', 'Название', 'Дата регистрации']);
+    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+
+    // Проверяем что логин не занят глобально
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:A` });
+    if ((r.data.values || []).flat().includes(login.trim()))
+      return res.json({ success: false, error: 'Этот логин уже занят' });
+
+    const agencyId = 'ag_' + Date.now().toString(36);
+    const now = new Date().toISOString();
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A:C`, valueInputOption: 'RAW',
+      requestBody: { values: [[agencyId, agencyName.trim(), now]] },
+    });
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A:E`, valueInputOption: 'RAW',
+      requestBody: { values: [[login.trim(), hashPwd(password), 'Администратор', 'admin', agencyId]] },
+    });
+
+    const token = signToken({ login: login.trim(), role: 'admin', name: 'Администратор', agencyId });
+    res.json({ success: true, token, role: 'admin', name: 'Администратор', agencyId, agencyName: agencyName.trim() });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════
 //  AUTH ROUTES
 // ════════════════════════════════════════════════════
 
@@ -90,136 +126,190 @@ app.post('/api/auth/login', async (req, res) => {
     const { login, password } = req.body;
     if (!login?.trim() || !password) return res.json({ success: false, error: 'Заполните поля' });
     const sheets = await getSheets();
-    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль']);
-    const r    = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:D` });
+    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+    const r    = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
     const rows = r.data.values || [];
     const hash = hashPwd(password);
-    // Default admin fallback if no accounts in sheet
+    // Fallback admin если таблица пуста
     if (rows.length === 0 && login.trim() === 'admin' && hash === hashPwd('1234')) {
-      return res.json({ success: true, token: signToken({ login: 'admin', role: 'admin', name: 'Администратор' }), role: 'admin', name: 'Администратор' });
+      const token = signToken({ login: 'admin', role: 'admin', name: 'Администратор', agencyId: 'default' });
+      return res.json({ success: true, token, role: 'admin', name: 'Администратор', agencyId: 'default' });
     }
     const found = rows.find(row => row[0] === login.trim() && row[1] === hash);
     if (!found) return res.json({ success: false, error: 'Неверный логин или пароль' });
-    const role = found[3] || 'manager';
-    const name = found[2] || login.trim();
-    res.json({ success: true, token: signToken({ login: login.trim(), role, name }), role, name });
+    const role     = found[3] || 'manager';
+    const name     = found[2] || login.trim();
+    const agencyId = found[4] || 'default';
+    const token    = signToken({ login: login.trim(), role, name, agencyId });
+    res.json({ success: true, token, role, name, agencyId });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// ════════════════════════════════════════════════════
+//  АККАУНТЫ (только в рамках своего агентства)
+// ════════════════════════════════════════════════════
+
 app.get('/api/accounts', async (req, res) => {
   if (req.session?.role !== 'admin') return res.json({ success: false, error: 'Доступ запрещён' });
+  const agencyId = req.session.agencyId || 'default';
   try {
     const sheets = await getSheets();
-    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль']);
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:D` });
-    res.json({ success: true, accounts: (r.data.values || []).map(row => ({ login: row[0] || '', manager: row[2] || '', role: row[3] || 'manager' })) });
+    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const rows = (r.data.values || []).filter(row => (row[4] || 'default') === agencyId);
+    res.json({ success: true, accounts: rows.map(row => ({ login: row[0] || '', manager: row[2] || '', role: row[3] || 'manager' })) });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 app.post('/api/accounts', async (req, res) => {
   if (req.session?.role !== 'admin') return res.json({ success: false, error: 'Доступ запрещён' });
+  const agencyId = req.session.agencyId || 'default';
   try {
     const { login, password, manager, role = 'manager' } = req.body;
     if (!login?.trim() || !password) return res.json({ success: false, error: 'Заполните поля' });
     const sheets = await getSheets();
-    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль']);
+    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
     const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:A` });
-    if ((r.data.values || []).flat().includes(login.trim())) return res.json({ success: false, error: 'Логин уже существует' });
-    await sheets.spreadsheets.values.append({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A:D`, valueInputOption: 'RAW', requestBody: { values: [[login.trim(), hashPwd(password), manager || '', role]] } });
-    const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:D` });
-    res.json({ success: true, accounts: (updated.data.values || []).map(row => ({ login: row[0], manager: row[2], role: row[3] })) });
+    if ((r.data.values || []).flat().includes(login.trim()))
+      return res.json({ success: false, error: 'Логин уже существует' });
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A:E`, valueInputOption: 'RAW',
+      requestBody: { values: [[login.trim(), hashPwd(password), manager || '', role, agencyId]] },
+    });
+    const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const rows = (updated.data.values || []).filter(row => (row[4] || 'default') === agencyId);
+    res.json({ success: true, accounts: rows.map(row => ({ login: row[0], manager: row[2], role: row[3] })) });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 app.delete('/api/accounts/:login', async (req, res) => {
   if (req.session?.role !== 'admin') return res.json({ success: false, error: 'Доступ запрещён' });
+  const agencyId = req.session.agencyId || 'default';
   try {
     const login  = decodeURIComponent(req.params.login);
     const sheets = await getSheets();
     const meta   = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
     const sheet  = meta.data.sheets.find(s => s.properties.title === ACCOUNTS_SHEET);
     if (!sheet) return res.json({ success: false, error: 'Не найдено' });
-    const r   = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:A` });
-    const idx = (r.data.values || []).findIndex(row => row[0] === login);
+    const r   = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const idx = (r.data.values || []).findIndex(row => row[0] === login && (row[4] || 'default') === agencyId);
     if (idx < 0) return res.json({ success: false, error: 'Аккаунт не найден' });
-    await sheets.spreadsheets.batchUpdate({ spreadsheetId: SPREADSHEET_ID, requestBody: { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }] } });
-    const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:D` });
-    res.json({ success: true, accounts: (updated.data.values || []).map(row => ({ login: row[0], manager: row[2], role: row[3] })) });
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }] },
+    });
+    const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const rows = (updated.data.values || []).filter(row => (row[4] || 'default') === agencyId);
+    res.json({ success: true, accounts: rows.map(row => ({ login: row[0], manager: row[2], role: row[3] })) });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 app.put('/api/accounts/:login/password', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
-  const login = decodeURIComponent(req.params.login);
-  if (req.session.role !== 'admin' && req.session.login !== login) return res.json({ success: false, error: 'Доступ запрещён' });
+  const login    = decodeURIComponent(req.params.login);
+  const agencyId = req.session.agencyId || 'default';
+  if (req.session.role !== 'admin' && req.session.login !== login)
+    return res.json({ success: false, error: 'Доступ запрещён' });
   try {
     const { password } = req.body;
     if (!password) return res.json({ success: false, error: 'Введите пароль' });
     const sheets = await getSheets();
-    const r   = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:A` });
-    const idx = (r.data.values || []).findIndex(row => row[0] === login);
+    const r   = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const idx = (r.data.values || []).findIndex(row => row[0] === login && (row[4] || 'default') === agencyId);
     if (idx < 0) return res.json({ success: false, error: 'Аккаунт не найден' });
-    await sheets.spreadsheets.values.update({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!B${idx + 2}`, valueInputOption: 'RAW', requestBody: { values: [[hashPwd(password)]] } });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!B${idx + 2}`,
+      valueInputOption: 'RAW', requestBody: { values: [[hashPwd(password)]] },
+    });
     res.json({ success: true });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 // ════════════════════════════════════════════════════
-//  МЕНЕДЖЕРЫ
+//  МЕНЕДЖЕРЫ (из Аккаунтов, только своего агентства)
 // ════════════════════════════════════════════════════
 
-// Менеджеры берутся из листа Аккаунты — поле "Менеджер" (колонка C)
 app.get('/api/managers', async (req, res) => {
   try {
+    const agencyId = req.session?.agencyId || 'default';
     const sheets = await getSheets();
-    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль']);
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:D` });
+    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
     const rows = r.data.values || [];
-    const names = [...new Set(rows.map(row => (row[2] || '').trim()).filter(Boolean))];
+    const names = [...new Set(
+      rows
+        .filter(row => (row[4] || 'default') === agencyId)
+        .map(row => (row[2] || '').trim())
+        .filter(Boolean)
+    )];
     res.json({ success: true, managers: names });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 // ════════════════════════════════════════════════════
 //  УНИВЕРСАЛЬНЫЙ CRUD ДЛЯ СПРАВОЧНИКОВ
+//  Колонки: A=Название, B=AgencyID
 // ════════════════════════════════════════════════════
 
 function makeListRouter(sheetName) {
   return {
     async getAll(req, res) {
       try {
+        const agencyId = req.session?.agencyId || 'default';
         const sheets = await getSheets();
-        await ensureSheet(sheets, sheetName, ['Название']);
-        const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:A` });
-        res.json({ success: true, items: (r.data.values || []).flat().filter(Boolean) });
+        await ensureSheet(sheets, sheetName, ['Название', 'AgencyID']);
+        const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
+        const items = (r.data.values || [])
+          .filter(row => (row[1] || 'default') === agencyId)
+          .map(row => row[0])
+          .filter(Boolean);
+        res.json({ success: true, items });
       } catch (e) { res.json({ success: false, error: e.message }); }
     },
     async add(req, res) {
       try {
+        const agencyId = req.session?.agencyId || 'default';
         const name = String(req.body.name || '').trim();
         if (!name) return res.json({ success: false, error: 'Пустое название' });
         const sheets = await getSheets();
-        await ensureSheet(sheets, sheetName, ['Название']);
-        const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:A` });
-        if ((r.data.values || []).flat().map(v => v.toLowerCase()).includes(name.toLowerCase())) return res.json({ success: false, error: 'Уже существует' });
-        await sheets.spreadsheets.values.append({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A:A`, valueInputOption: 'RAW', requestBody: { values: [[name]] } });
-        const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:A` });
-        res.json({ success: true, items: (updated.data.values || []).flat().filter(Boolean) });
+        await ensureSheet(sheets, sheetName, ['Название', 'AgencyID']);
+        const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
+        const agencyItems = (r.data.values || [])
+          .filter(row => (row[1] || 'default') === agencyId)
+          .map(row => row[0]);
+        if (agencyItems.map(v => v.toLowerCase()).includes(name.toLowerCase()))
+          return res.json({ success: false, error: 'Уже существует' });
+        await sheets.spreadsheets.values.append({
+          spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A:B`, valueInputOption: 'RAW',
+          requestBody: { values: [[name, agencyId]] },
+        });
+        const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
+        const items = (updated.data.values || [])
+          .filter(row => (row[1] || 'default') === agencyId)
+          .map(row => row[0]).filter(Boolean);
+        res.json({ success: true, items });
       } catch (e) { res.json({ success: false, error: e.message }); }
     },
     async remove(req, res) {
       try {
+        const agencyId = req.session?.agencyId || 'default';
         const name   = decodeURIComponent(req.params.name);
         const sheets = await getSheets();
         const meta   = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
         const sheet  = meta.data.sheets.find(s => s.properties.title === sheetName);
         if (!sheet) return res.json({ success: false, error: 'Не найдено' });
-        const r   = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:A` });
-        const idx = (r.data.values || []).findIndex(row => row[0] === name);
+        const r   = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
+        const idx = (r.data.values || []).findIndex(row => row[0] === name && (row[1] || 'default') === agencyId);
         if (idx === -1) return res.json({ success: false, error: 'Не найдено' });
-        await sheets.spreadsheets.batchUpdate({ spreadsheetId: SPREADSHEET_ID, requestBody: { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }] } });
-        const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:A` });
-        res.json({ success: true, items: (updated.data.values || []).flat().filter(Boolean) });
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }] },
+        });
+        const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
+        const items = (updated.data.values || [])
+          .filter(row => (row[1] || 'default') === agencyId)
+          .map(row => row[0]).filter(Boolean);
+        res.json({ success: true, items });
       } catch (e) { res.json({ success: false, error: e.message }); }
     },
   };
@@ -242,25 +332,21 @@ app.delete('/api/sources/:name', sourcesRouter.remove);
 
 // ════════════════════════════════════════════════════
 //  ПРОДАЖИ
-// Колонки A–S:
-//  A Дата, B Договор, C Менеджер, D Кол-во, E Дата брони,
-//  F Клиент, G Направление, H Отель, I Телефон, J Источник,
-//  K Сумма, L Валюта, M Комиссия($), N Скидка($), O Остаток($),
-//  P Курс, Q Нетто, R Предоплата, S Долг клиента
+//  A–S (19 колонок) + T=AgencyID
 // ════════════════════════════════════════════════════
 
 const SALE_HEADERS = [
   'Дата','Номер договора','Менеджер','Кол-во продаж','Дата брони',
   'Клиент','Направление','Отель','Телефон','Источник',
   'Сумма','Валюта','Комиссия ($)','Скидка ($)','Остаток ($)',
-  'Курс','Нетто','Предоплата','Долг клиента',
+  'Курс','Нетто','Предоплата','Долг клиента','AgencyID',
 ];
 
 app.post('/api/sales', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
+  const agencyId = req.session.agencyId || 'default';
   try {
     const { contractNumber, salesCount, bookingDate, clientName, direction, hotel, phone, source, amount, currency, commission, discount, rate, netto, prepayment } = req.body;
-    // If manager — force their name; if admin — use provided manager field
     const manager = req.session.role === 'manager' ? req.session.name : (req.body.manager || '');
     if (!contractNumber || !manager || !salesCount)
       return res.json({ success: false, error: 'Заполните обязательные поля' });
@@ -269,7 +355,7 @@ app.post('/api/sales', async (req, res) => {
     await ensureSheet(sheets, sheetName, SALE_HEADERS);
     const debt = (amount && prepayment) ? Math.round((Number(amount) - Number(prepayment)) * 100) / 100 : '';
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A:S`, valueInputOption: 'RAW',
+      spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A:T`, valueInputOption: 'RAW',
       requestBody: { values: [[
         new Date().toISOString(), contractNumber.trim(), manager, Number(salesCount),
         bookingDate || '', clientName || '', direction || '', hotel || '', phone || '', source || '',
@@ -278,6 +364,7 @@ app.post('/api/sales', async (req, res) => {
         commission ? Math.round((Number(commission) - (Number(discount) || 0)) * 100) / 100 : '',
         rate ? Number(rate) : '',
         netto ? Number(netto) : '', prepayment ? Number(prepayment) : '', debt,
+        agencyId,
       ]] },
     });
     res.json({ success: true });
@@ -286,14 +373,17 @@ app.post('/api/sales', async (req, res) => {
 
 app.get('/api/sales', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
+  const agencyId = req.session.agencyId || 'default';
   try {
     const sheets = await getSheets();
     const meta   = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
     const titles = meta.data.sheets.map(s => s.properties.title).filter(isSalesSheet);
     const allRows = [];
     for (const title of titles) {
-      const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${title}!A2:S` });
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${title}!A2:T` });
       (r.data.values || []).forEach((row, i) => {
+        const rowAgencyId = row[19] || 'default';
+        if (rowAgencyId !== agencyId) return; // изоляция по агентству
         allRows.push({
           id            : `${title}|${i + 2}`,
           date          : row[0]  || '',
@@ -318,7 +408,6 @@ app.get('/api/sales', async (req, res) => {
         });
       });
     }
-    // Filter by manager if role = 'manager'
     const result = req.session.role === 'manager'
       ? allRows.filter(s => s.manager === req.session.name)
       : allRows;

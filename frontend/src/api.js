@@ -15,7 +15,8 @@ async function call(url, options = {}) {
 
 export const api = {
   // Auth
-  login: (login, password) => call('/api/auth/login', { method: 'POST', body: JSON.stringify({ login, password }) }),
+  login:    (login, password) => call('/api/auth/login', { method: 'POST', body: JSON.stringify({ login, password }) }),
+  register: (data)            => call('/api/register',   { method: 'POST', body: JSON.stringify(data) }),
 
   // Accounts (admin only)
   getAccounts:    ()                        => call('/api/accounts'),

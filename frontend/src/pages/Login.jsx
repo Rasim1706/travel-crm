@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onRegister }) {
   const [login,    setLogin]    = useState('')
   const [password, setPassword] = useState('')
   const [error,    setError]    = useState('')
@@ -14,10 +14,11 @@ export default function Login({ onLogin }) {
     try {
       const r = await api.login(login.trim(), password)
       if (r.success) {
-        sessionStorage.setItem('crm_token', r.token)
-        sessionStorage.setItem('crm_role',  r.role)
-        sessionStorage.setItem('crm_name',  r.name)
-        onLogin({ token: r.token, role: r.role, name: r.name })
+        sessionStorage.setItem('crm_token',     r.token)
+        sessionStorage.setItem('crm_role',      r.role)
+        sessionStorage.setItem('crm_name',      r.name)
+        sessionStorage.setItem('crm_agency_id', r.agencyId || 'default')
+        onLogin({ token: r.token, role: r.role, name: r.name, agencyId: r.agencyId || 'default' })
       } else {
         setError(r.error || 'Неверный логин или пароль')
       }
@@ -94,6 +95,20 @@ export default function Login({ onLogin }) {
 
         <div style={{ marginTop: 20, padding: '12px', background: '#f8fafc', borderRadius: 12, fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
           Первый вход: <strong>admin / 1234</strong>
+        </div>
+
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 13, color: 'var(--muted)' }}>Нет аккаунта? </span>
+          <button
+            onClick={onRegister}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--primary)', fontSize: 13, fontWeight: 700,
+              fontFamily: 'inherit', padding: 0,
+            }}
+          >
+            Зарегистрировать агентство →
+          </button>
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import Login    from './pages/Login'
+import Login     from './pages/Login'
+import Register  from './pages/Register'
 import SaleForm  from './pages/SaleForm'
 import Dashboard from './pages/Dashboard'
 import Clients   from './pages/Clients'
@@ -18,30 +19,40 @@ const ALL_TABS = [
 const MANAGER_TABS = new Set(['form', 'dash'])
 
 function readSession() {
-  const token = sessionStorage.getItem('crm_token')
-  const role  = sessionStorage.getItem('crm_role')
-  const name  = sessionStorage.getItem('crm_name')
-  if (token && role) return { token, role, name }
+  const token    = sessionStorage.getItem('crm_token')
+  const role     = sessionStorage.getItem('crm_role')
+  const name     = sessionStorage.getItem('crm_name')
+  const agencyId = sessionStorage.getItem('crm_agency_id') || 'default'
+  if (token && role) return { token, role, name, agencyId }
   return null
 }
 
 export default function App() {
-  const [session, setSession] = useState(readSession)
-  const [active,  setActive]  = useState('form')
-  const [dashKey, setDashKey] = useState(0)
+  const [session,  setSession]  = useState(readSession)
+  const [active,   setActive]   = useState('form')
+  const [dashKey,  setDashKey]  = useState(0)
+  const [authPage, setAuthPage] = useState('login') // 'login' | 'register'
 
   function handleLogin(sess) {
+    sessionStorage.setItem('crm_agency_id', sess.agencyId || 'default')
     setSession(sess)
     setActive('form')
+    setAuthPage('login')
   }
 
   function handleLogout() {
     sessionStorage.clear()
     setSession(null)
     setActive('form')
+    setAuthPage('login')
   }
 
-  if (!session) return <Login onLogin={handleLogin} />
+  if (!session) {
+    if (authPage === 'register') {
+      return <Register onRegister={handleLogin} onBack={() => setAuthPage('login')} />
+    }
+    return <Login onLogin={handleLogin} onRegister={() => setAuthPage('register')} />
+  }
 
   const isAdmin = session.role === 'admin'
   const tabs    = ALL_TABS.filter(t => isAdmin || MANAGER_TABS.has(t.id))
