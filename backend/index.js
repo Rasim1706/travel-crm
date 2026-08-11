@@ -48,17 +48,11 @@ async function getAuth() {
     : { keyFile: path.join(__dirname, 'credentials.json') };
   return new google.auth.GoogleAuth({
     ...authConfig,
-    scopes: [
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive.file',
-    ],
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 }
 async function getSheets() {
   return google.sheets({ version: 'v4', auth: await getAuth() });
-}
-async function getDrive() {
-  return google.drive({ version: 'v3', auth: await getAuth() });
 }
 
 // ── Убедиться что лист существует ───────────────────
@@ -208,20 +202,8 @@ app.post('/api/register', async (req, res) => {
       // Настраиваем шаблон
       await setupAgencySheet(sheets, spreadsheetId, agencyName.trim());
 
-      // Даём доступ на email если указан
-      if (email?.trim()) {
-        try {
-          const drive = await getDrive();
-          await drive.permissions.create({
-            fileId: spreadsheetId,
-            sendNotificationEmail: true,
-            emailMessage: `Ваша CRM-таблица для агентства "${agencyName.trim()}" готова!`,
-            requestBody: { role: 'writer', type: 'user', emailAddress: email.trim() },
-          });
-        } catch (e) {
-          console.log('Share email failed (non-fatal):', e.message);
-        }
-      }
+      // Примечание: автошаринг на email требует Drive API.
+      // Пользователь может вручную открыть таблицу через ссылку и добавить доступ.
     }
 
     // Записываем агентство в мастер-таблицу
