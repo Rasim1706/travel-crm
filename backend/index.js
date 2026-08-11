@@ -8,7 +8,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const SPREADSHEET_ID   = '1EcmuWFgyBLp3BH5RxWC50iAmTarnz9dosFZnE7ZQQlY';
+// Мастер-таблица: хранит список агентств + глобальные аккаунты
+const MASTER_SPREADSHEET_ID = '1EcmuWFgyBLp3BH5RxWC50iAmTarnz9dosFZnE7ZQQlY';
+
 const SALES_SHEET      = 'Продажи';
 const DIRECTIONS_SHEET = 'Направления';
 const HOTELS_SHEET     = 'Отели';
@@ -21,6 +23,13 @@ const MONTH_NAMES_RU = [
   'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь',
 ];
 
+const SALE_HEADERS = [
+  'Дата','Номер договора','Менеджер','Кол-во продаж','Дата брони',
+  'Клиент','Направление','Отель','Телефон','Источник',
+  'Сумма','Валюта','Комиссия ($)','Скидка ($)','Остаток ($)',
+  'Курс','Нетто','Предоплата','Долг клиента',
+];
+
 function currentMonthSheet() {
   const d = new Date();
   return `${MONTH_NAMES_RU[d.getMonth()]} ${d.getFullYear()}`;
@@ -29,30 +38,87 @@ function isSalesSheet(title) {
   return title === SALES_SHEET || MONTH_NAMES_RU.some(m => title.startsWith(m + ' '));
 }
 
-// ── Google Sheets auth ───────────────────────────────
-async function getSheets() {
+// ── Google API auth ──────────────────────────────────
+async function getAuth() {
   const authConfig = process.env.GOOGLE_CREDENTIALS_JSON
     ? { credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON) }
     : { keyFile: path.join(__dirname, 'credentials.json') };
-  const auth = new google.auth.GoogleAuth({
+  return new google.auth.GoogleAuth({
     ...authConfig,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    scopes: [
+      'https://www.googleapis.com/auth/spreadsheets',
+      'https://www.googleapis.com/auth/drive.file',
+    ],
   });
-  return google.sheets({ version: 'v4', auth });
+}
+async function getSheets() {
+  return google.sheets({ version: 'v4', auth: await getAuth() });
+}
+async function getDrive() {
+  return google.drive({ version: 'v3', auth: await getAuth() });
 }
 
-async function ensureSheet(sheets, title, headers) {
-  const meta  = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+// ── Убедиться что лист существует ───────────────────
+async function ensureSheet(sheets, spreadsheetId, title, headers) {
+  const meta  = await sheets.spreadsheets.get({ spreadsheetId });
   const found = meta.data.sheets.find(s => s.properties.title === title);
   if (!found) {
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
-      requestBody : { requests: [{ addSheet: { properties: { title } } }] },
+      spreadsheetId,
+      requestBody: { requests: [{ addSheet: { properties: { title } } }] },
     });
     await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID, range: `${title}!A1`,
+      spreadsheetId, range: `${title}!A1`,
       valueInputOption: 'RAW', requestBody: { values: [headers] },
     });
+  }
+}
+
+// ── Настроить шаблон в новой таблице агентства ───────
+async function setupAgencySheet(sheets, spreadsheetId, agencyName) {
+  try {
+    const meta = await sheets.spreadsheets.get({ spreadsheetId });
+    const sheet1 = meta.data.sheets[0];
+
+    // Переименовываем Sheet1 → шаблон импорта
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: { requests: [{
+        updateSheetProperties: {
+          properties: { sheetId: sheet1.properties.sheetId, title: '📋 Шаблон импорта' },
+          fields: 'title',
+        },
+      }] },
+    });
+
+    // Записываем заголовки + примеры
+    const today = new Date().toISOString().slice(0, 10);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: '📋 Шаблон импорта!A1',
+      valueInputOption: 'RAW',
+      requestBody: { values: [
+        SALE_HEADERS,
+        [today, 'ДОГ-001', 'Менеджер Имя', '2', today, 'Иванов Иван', 'Турция', 'Rixos Premium Belek', '+7 777 123 4567', 'Instagram', '2500', 'USD', '300', '0', '300', '490', '2200', '1250', '1250'],
+        [today, 'ДОГ-002', 'Менеджер Имя', '1', today, 'Петрова Мария', 'ОАЭ', 'Atlantis The Palm', '+7 701 987 6543', 'Сарафанка', '3000', 'USD', '350', '100', '250', '490', '2650', '1500', '1500'],
+        ['⬆️ Это примеры. Удалите строки 2-3, вставьте свои данные. Не удаляйте строку 1 (заголовки). Таблица создана CRM-системой для агентства: ' + agencyName],
+      ] },
+    });
+  } catch (e) {
+    console.log('setupAgencySheet error (non-fatal):', e.message);
+  }
+}
+
+// ── Получить spreadsheetId агентства ─────────────────
+async function getAgencySpreadsheetId(sheets, agencyId) {
+  if (!agencyId || agencyId === 'default') return MASTER_SPREADSHEET_ID;
+  try {
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, AGENCIES_SHEET, ['AgencyID', 'Название', 'Email', 'SpreadsheetID', 'SpreadsheetURL', 'Дата']);
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A2:F` });
+    const row = (r.data.values || []).find(row => row[0] === agencyId);
+    return row ? (row[3] || MASTER_SPREADSHEET_ID) : MASTER_SPREADSHEET_ID;
+  } catch {
+    return MASTER_SPREADSHEET_ID;
   }
 }
 
@@ -81,44 +147,99 @@ app.use((req, res, next) => {
   next();
 });
 
+// helper: получить spreadsheetId из сессии (перс-агентство или мастер)
+function sessionSpreadsheetId(req) {
+  return req.session?.spreadsheetId || MASTER_SPREADSHEET_ID;
+}
+
 // ════════════════════════════════════════════════════
 //  РЕГИСТРАЦИЯ АГЕНТСТВА
 // ════════════════════════════════════════════════════
 
 app.post('/api/register', async (req, res) => {
   try {
-    const { agencyName, login, password } = req.body;
+    const { agencyName, login, password, email, existingSheetUrl } = req.body;
     if (!agencyName?.trim() || !login?.trim() || !password)
       return res.json({ success: false, error: 'Заполните все поля' });
 
     const sheets = await getSheets();
-    await ensureSheet(sheets, AGENCIES_SHEET, ['ID агентства', 'Название', 'Дата регистрации']);
-    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, AGENCIES_SHEET, ['AgencyID', 'Название', 'Email', 'SpreadsheetID', 'SpreadsheetURL', 'Дата']);
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
 
-    // Проверяем что логин не занят глобально
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:A` });
+    // Проверяем уникальность логина глобально
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:A` });
     if ((r.data.values || []).flat().includes(login.trim()))
       return res.json({ success: false, error: 'Этот логин уже занят' });
 
     const agencyId = 'ag_' + Date.now().toString(36);
     const now = new Date().toISOString();
+    let spreadsheetId;
+    let spreadsheetUrl;
 
+    if (existingSheetUrl?.trim()) {
+      // Восстановление: используем существующую таблицу
+      const match = existingSheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      if (!match) return res.json({ success: false, error: 'Неверная ссылка на таблицу Google Sheets' });
+      spreadsheetId = match[1];
+      spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+      // Проверяем доступность
+      try {
+        await sheets.spreadsheets.get({ spreadsheetId });
+      } catch {
+        return res.json({
+          success: false,
+          error: `Таблица недоступна. Откройте доступ (редактор) для: travel-crm-bot@travel-crm-497007.iam.gserviceaccount.com`,
+        });
+      }
+    } else {
+      // Создаём новую таблицу
+      const created = await sheets.spreadsheets.create({
+        requestBody: { properties: { title: `${agencyName.trim()} — CRM` } },
+      });
+      spreadsheetId = created.data.spreadsheetId;
+      spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+
+      // Настраиваем шаблон
+      await setupAgencySheet(sheets, spreadsheetId, agencyName.trim());
+
+      // Даём доступ на email если указан
+      if (email?.trim()) {
+        try {
+          const drive = await getDrive();
+          await drive.permissions.create({
+            fileId: spreadsheetId,
+            sendNotificationEmail: true,
+            emailMessage: `Ваша CRM-таблица для агентства "${agencyName.trim()}" готова!`,
+            requestBody: { role: 'writer', type: 'user', emailAddress: email.trim() },
+          });
+        } catch (e) {
+          console.log('Share email failed (non-fatal):', e.message);
+        }
+      }
+    }
+
+    // Записываем агентство в мастер-таблицу
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A:C`, valueInputOption: 'RAW',
-      requestBody: { values: [[agencyId, agencyName.trim(), now]] },
+      spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A:F`, valueInputOption: 'RAW',
+      requestBody: { values: [[agencyId, agencyName.trim(), email?.trim() || '', spreadsheetId, spreadsheetUrl, now]] },
     });
+
+    // Записываем аккаунт администратора в мастер-таблицу
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A:E`, valueInputOption: 'RAW',
+      spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A:E`, valueInputOption: 'RAW',
       requestBody: { values: [[login.trim(), hashPwd(password), 'Администратор', 'admin', agencyId]] },
     });
 
-    const token = signToken({ login: login.trim(), role: 'admin', name: 'Администратор', agencyId });
-    res.json({ success: true, token, role: 'admin', name: 'Администратор', agencyId, agencyName: agencyName.trim() });
+    const token = signToken({ login: login.trim(), role: 'admin', name: 'Администратор', agencyId, spreadsheetId });
+    res.json({
+      success: true, token, role: 'admin', name: 'Администратор',
+      agencyId, spreadsheetId, spreadsheetUrl, agencyName: agencyName.trim(),
+    });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 // ════════════════════════════════════════════════════
-//  AUTH ROUTES
+//  AUTH
 // ════════════════════════════════════════════════════
 
 app.post('/api/auth/login', async (req, res) => {
@@ -126,27 +247,34 @@ app.post('/api/auth/login', async (req, res) => {
     const { login, password } = req.body;
     if (!login?.trim() || !password) return res.json({ success: false, error: 'Заполните поля' });
     const sheets = await getSheets();
-    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
-    const r    = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+    const r    = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
     const rows = r.data.values || [];
     const hash = hashPwd(password);
+
     // Fallback admin если таблица пуста
     if (rows.length === 0 && login.trim() === 'admin' && hash === hashPwd('1234')) {
-      const token = signToken({ login: 'admin', role: 'admin', name: 'Администратор', agencyId: 'default' });
-      return res.json({ success: true, token, role: 'admin', name: 'Администратор', agencyId: 'default' });
+      const token = signToken({ login: 'admin', role: 'admin', name: 'Администратор', agencyId: 'default', spreadsheetId: MASTER_SPREADSHEET_ID });
+      return res.json({ success: true, token, role: 'admin', name: 'Администратор', agencyId: 'default', spreadsheetId: MASTER_SPREADSHEET_ID });
     }
+
     const found = rows.find(row => row[0] === login.trim() && row[1] === hash);
     if (!found) return res.json({ success: false, error: 'Неверный логин или пароль' });
+
     const role     = found[3] || 'manager';
     const name     = found[2] || login.trim();
     const agencyId = found[4] || 'default';
-    const token    = signToken({ login: login.trim(), role, name, agencyId });
-    res.json({ success: true, token, role, name, agencyId });
+
+    // Получаем spreadsheetId этого агентства
+    const spreadsheetId = await getAgencySpreadsheetId(sheets, agencyId);
+
+    const token = signToken({ login: login.trim(), role, name, agencyId, spreadsheetId });
+    res.json({ success: true, token, role, name, agencyId, spreadsheetId });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
 // ════════════════════════════════════════════════════
-//  АККАУНТЫ (только в рамках своего агентства)
+//  АККАУНТЫ (всегда в мастер-таблице, фильтр по agencyId)
 // ════════════════════════════════════════════════════
 
 app.get('/api/accounts', async (req, res) => {
@@ -154,8 +282,8 @@ app.get('/api/accounts', async (req, res) => {
   const agencyId = req.session.agencyId || 'default';
   try {
     const sheets = await getSheets();
-    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
     const rows = (r.data.values || []).filter(row => (row[4] || 'default') === agencyId);
     res.json({ success: true, accounts: rows.map(row => ({ login: row[0] || '', manager: row[2] || '', role: row[3] || 'manager' })) });
   } catch (e) { res.json({ success: false, error: e.message }); }
@@ -168,15 +296,15 @@ app.post('/api/accounts', async (req, res) => {
     const { login, password, manager, role = 'manager' } = req.body;
     if (!login?.trim() || !password) return res.json({ success: false, error: 'Заполните поля' });
     const sheets = await getSheets();
-    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:A` });
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:A` });
     if ((r.data.values || []).flat().includes(login.trim()))
       return res.json({ success: false, error: 'Логин уже существует' });
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A:E`, valueInputOption: 'RAW',
+      spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A:E`, valueInputOption: 'RAW',
       requestBody: { values: [[login.trim(), hashPwd(password), manager || '', role, agencyId]] },
     });
-    const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const updated = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
     const rows = (updated.data.values || []).filter(row => (row[4] || 'default') === agencyId);
     res.json({ success: true, accounts: rows.map(row => ({ login: row[0], manager: row[2], role: row[3] })) });
   } catch (e) { res.json({ success: false, error: e.message }); }
@@ -188,17 +316,17 @@ app.delete('/api/accounts/:login', async (req, res) => {
   try {
     const login  = decodeURIComponent(req.params.login);
     const sheets = await getSheets();
-    const meta   = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    const meta   = await sheets.spreadsheets.get({ spreadsheetId: MASTER_SPREADSHEET_ID });
     const sheet  = meta.data.sheets.find(s => s.properties.title === ACCOUNTS_SHEET);
     if (!sheet) return res.json({ success: false, error: 'Не найдено' });
-    const r   = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const r   = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
     const idx = (r.data.values || []).findIndex(row => row[0] === login && (row[4] || 'default') === agencyId);
     if (idx < 0) return res.json({ success: false, error: 'Аккаунт не найден' });
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId: MASTER_SPREADSHEET_ID,
       requestBody: { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }] },
     });
-    const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const updated = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
     const rows = (updated.data.values || []).filter(row => (row[4] || 'default') === agencyId);
     res.json({ success: true, accounts: rows.map(row => ({ login: row[0], manager: row[2], role: row[3] })) });
   } catch (e) { res.json({ success: false, error: e.message }); }
@@ -214,11 +342,11 @@ app.put('/api/accounts/:login/password', async (req, res) => {
     const { password } = req.body;
     if (!password) return res.json({ success: false, error: 'Введите пароль' });
     const sheets = await getSheets();
-    const r   = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const r   = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
     const idx = (r.data.values || []).findIndex(row => row[0] === login && (row[4] || 'default') === agencyId);
     if (idx < 0) return res.json({ success: false, error: 'Аккаунт не найден' });
     await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!B${idx + 2}`,
+      spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!B${idx + 2}`,
       valueInputOption: 'RAW', requestBody: { values: [[hashPwd(password)]] },
     });
     res.json({ success: true });
@@ -226,15 +354,15 @@ app.put('/api/accounts/:login/password', async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════
-//  МЕНЕДЖЕРЫ (из Аккаунтов, только своего агентства)
+//  МЕНЕДЖЕРЫ (из мастер Аккаунтов, фильтр по agencyId)
 // ════════════════════════════════════════════════════
 
 app.get('/api/managers', async (req, res) => {
   try {
     const agencyId = req.session?.agencyId || 'default';
     const sheets = await getSheets();
-    await ensureSheet(sheets, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
-    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    await ensureSheet(sheets, MASTER_SPREADSHEET_ID, ACCOUNTS_SHEET, ['Логин', 'Пароль', 'Менеджер', 'Роль', 'AgencyID']);
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
     const rows = r.data.values || [];
     const names = [...new Set(
       rows
@@ -246,70 +374,118 @@ app.get('/api/managers', async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// ── Информация об агентстве ────────────────────────
+app.get('/api/agency', async (req, res) => {
+  if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
+  const agencyId = req.session.agencyId || 'default';
+  const spreadsheetId = req.session.spreadsheetId || MASTER_SPREADSHEET_ID;
+  try {
+    if (agencyId === 'default') {
+      return res.json({ success: true, agency: { name: 'Основное агентство', spreadsheetId, spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit` } });
+    }
+    const sheets = await getSheets();
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${AGENCIES_SHEET}!A2:F` });
+    const row = (r.data.values || []).find(row => row[0] === agencyId);
+    if (!row) return res.json({ success: true, agency: { name: 'Агентство', spreadsheetId, spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit` } });
+    res.json({ success: true, agency: { name: row[1], email: row[2], spreadsheetId: row[3], spreadsheetUrl: row[4] } });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
 // ════════════════════════════════════════════════════
-//  УНИВЕРСАЛЬНЫЙ CRUD ДЛЯ СПРАВОЧНИКОВ
-//  Колонки: A=Название, B=AgencyID
+//  СПРАВОЧНИКИ (в таблице агентства)
 // ════════════════════════════════════════════════════
 
 function makeListRouter(sheetName) {
+  // Для мастер-таблицы: фильтрация по agencyId (колонка B)
+  // Для отдельной таблицы: просто читаем/пишем колонку A
   return {
     async getAll(req, res) {
       try {
-        const agencyId = req.session?.agencyId || 'default';
-        const sheets = await getSheets();
-        await ensureSheet(sheets, sheetName, ['Название', 'AgencyID']);
-        const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
-        const items = (r.data.values || [])
-          .filter(row => (row[1] || 'default') === agencyId)
-          .map(row => row[0])
-          .filter(Boolean);
-        res.json({ success: true, items });
+        const spreadsheetId = sessionSpreadsheetId(req);
+        const agencyId      = req.session?.agencyId || 'default';
+        const isMaster      = spreadsheetId === MASTER_SPREADSHEET_ID;
+        const sheets        = await getSheets();
+
+        if (isMaster) {
+          await ensureSheet(sheets, spreadsheetId, sheetName, ['Название', 'AgencyID']);
+          const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:B` });
+          const items = (r.data.values || [])
+            .filter(row => (row[1] || 'default') === agencyId)
+            .map(row => row[0]).filter(Boolean);
+          return res.json({ success: true, items });
+        } else {
+          await ensureSheet(sheets, spreadsheetId, sheetName, ['Название']);
+          const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:A` });
+          return res.json({ success: true, items: (r.data.values || []).flat().filter(Boolean) });
+        }
       } catch (e) { res.json({ success: false, error: e.message }); }
     },
+
     async add(req, res) {
       try {
-        const agencyId = req.session?.agencyId || 'default';
-        const name = String(req.body.name || '').trim();
+        const spreadsheetId = sessionSpreadsheetId(req);
+        const agencyId      = req.session?.agencyId || 'default';
+        const isMaster      = spreadsheetId === MASTER_SPREADSHEET_ID;
+        const name          = String(req.body.name || '').trim();
         if (!name) return res.json({ success: false, error: 'Пустое название' });
         const sheets = await getSheets();
-        await ensureSheet(sheets, sheetName, ['Название', 'AgencyID']);
-        const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
-        const agencyItems = (r.data.values || [])
-          .filter(row => (row[1] || 'default') === agencyId)
-          .map(row => row[0]);
-        if (agencyItems.map(v => v.toLowerCase()).includes(name.toLowerCase()))
-          return res.json({ success: false, error: 'Уже существует' });
-        await sheets.spreadsheets.values.append({
-          spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A:B`, valueInputOption: 'RAW',
-          requestBody: { values: [[name, agencyId]] },
-        });
-        const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
-        const items = (updated.data.values || [])
-          .filter(row => (row[1] || 'default') === agencyId)
-          .map(row => row[0]).filter(Boolean);
-        res.json({ success: true, items });
+
+        if (isMaster) {
+          await ensureSheet(sheets, spreadsheetId, sheetName, ['Название', 'AgencyID']);
+          const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:B` });
+          const existing = (r.data.values || []).filter(row => (row[1] || 'default') === agencyId).map(row => row[0]);
+          if (existing.map(v => v.toLowerCase()).includes(name.toLowerCase()))
+            return res.json({ success: false, error: 'Уже существует' });
+          await sheets.spreadsheets.values.append({ spreadsheetId, range: `${sheetName}!A:B`, valueInputOption: 'RAW', requestBody: { values: [[name, agencyId]] } });
+          const updated = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:B` });
+          const items = (updated.data.values || []).filter(row => (row[1] || 'default') === agencyId).map(row => row[0]).filter(Boolean);
+          return res.json({ success: true, items });
+        } else {
+          await ensureSheet(sheets, spreadsheetId, sheetName, ['Название']);
+          const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:A` });
+          if ((r.data.values || []).flat().map(v => v.toLowerCase()).includes(name.toLowerCase()))
+            return res.json({ success: false, error: 'Уже существует' });
+          await sheets.spreadsheets.values.append({ spreadsheetId, range: `${sheetName}!A:A`, valueInputOption: 'RAW', requestBody: { values: [[name]] } });
+          const updated = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:A` });
+          return res.json({ success: true, items: (updated.data.values || []).flat().filter(Boolean) });
+        }
       } catch (e) { res.json({ success: false, error: e.message }); }
     },
+
     async remove(req, res) {
       try {
-        const agencyId = req.session?.agencyId || 'default';
-        const name   = decodeURIComponent(req.params.name);
-        const sheets = await getSheets();
-        const meta   = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
-        const sheet  = meta.data.sheets.find(s => s.properties.title === sheetName);
+        const spreadsheetId = sessionSpreadsheetId(req);
+        const agencyId      = req.session?.agencyId || 'default';
+        const isMaster      = spreadsheetId === MASTER_SPREADSHEET_ID;
+        const name          = decodeURIComponent(req.params.name);
+        const sheets        = await getSheets();
+        const meta          = await sheets.spreadsheets.get({ spreadsheetId });
+        const sheet         = meta.data.sheets.find(s => s.properties.title === sheetName);
         if (!sheet) return res.json({ success: false, error: 'Не найдено' });
-        const r   = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
-        const idx = (r.data.values || []).findIndex(row => row[0] === name && (row[1] || 'default') === agencyId);
+
+        let idx;
+        if (isMaster) {
+          const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:B` });
+          idx = (r.data.values || []).findIndex(row => row[0] === name && (row[1] || 'default') === agencyId);
+        } else {
+          const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:A` });
+          idx = (r.data.values || []).findIndex(row => row[0] === name);
+        }
         if (idx === -1) return res.json({ success: false, error: 'Не найдено' });
+
         await sheets.spreadsheets.batchUpdate({
-          spreadsheetId: SPREADSHEET_ID,
+          spreadsheetId,
           requestBody: { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: idx + 1, endIndex: idx + 2 } } }] },
         });
-        const updated = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A2:B` });
-        const items = (updated.data.values || [])
-          .filter(row => (row[1] || 'default') === agencyId)
-          .map(row => row[0]).filter(Boolean);
-        res.json({ success: true, items });
+
+        if (isMaster) {
+          const updated = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:B` });
+          const items = (updated.data.values || []).filter(row => (row[1] || 'default') === agencyId).map(row => row[0]).filter(Boolean);
+          return res.json({ success: true, items });
+        } else {
+          const updated = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:A` });
+          return res.json({ success: true, items: (updated.data.values || []).flat().filter(Boolean) });
+        }
       } catch (e) { res.json({ success: false, error: e.message }); }
     },
   };
@@ -331,20 +507,12 @@ app.post('/api/sources',         sourcesRouter.add);
 app.delete('/api/sources/:name', sourcesRouter.remove);
 
 // ════════════════════════════════════════════════════
-//  ПРОДАЖИ
-//  A–S (19 колонок) + T=AgencyID
+//  ПРОДАЖИ (в таблице агентства)
 // ════════════════════════════════════════════════════
-
-const SALE_HEADERS = [
-  'Дата','Номер договора','Менеджер','Кол-во продаж','Дата брони',
-  'Клиент','Направление','Отель','Телефон','Источник',
-  'Сумма','Валюта','Комиссия ($)','Скидка ($)','Остаток ($)',
-  'Курс','Нетто','Предоплата','Долг клиента','AgencyID',
-];
 
 app.post('/api/sales', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
-  const agencyId = req.session.agencyId || 'default';
+  const spreadsheetId = sessionSpreadsheetId(req);
   try {
     const { contractNumber, salesCount, bookingDate, clientName, direction, hotel, phone, source, amount, currency, commission, discount, rate, netto, prepayment } = req.body;
     const manager = req.session.role === 'manager' ? req.session.name : (req.body.manager || '');
@@ -352,10 +520,10 @@ app.post('/api/sales', async (req, res) => {
       return res.json({ success: false, error: 'Заполните обязательные поля' });
     const sheets    = await getSheets();
     const sheetName = currentMonthSheet();
-    await ensureSheet(sheets, sheetName, SALE_HEADERS);
+    await ensureSheet(sheets, spreadsheetId, sheetName, SALE_HEADERS);
     const debt = (amount && prepayment) ? Math.round((Number(amount) - Number(prepayment)) * 100) / 100 : '';
     await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID, range: `${sheetName}!A:T`, valueInputOption: 'RAW',
+      spreadsheetId, range: `${sheetName}!A:S`, valueInputOption: 'RAW',
       requestBody: { values: [[
         new Date().toISOString(), contractNumber.trim(), manager, Number(salesCount),
         bookingDate || '', clientName || '', direction || '', hotel || '', phone || '', source || '',
@@ -364,7 +532,6 @@ app.post('/api/sales', async (req, res) => {
         commission ? Math.round((Number(commission) - (Number(discount) || 0)) * 100) / 100 : '',
         rate ? Number(rate) : '',
         netto ? Number(netto) : '', prepayment ? Number(prepayment) : '', debt,
-        agencyId,
       ]] },
     });
     res.json({ success: true });
@@ -373,17 +540,15 @@ app.post('/api/sales', async (req, res) => {
 
 app.get('/api/sales', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
-  const agencyId = req.session.agencyId || 'default';
+  const spreadsheetId = sessionSpreadsheetId(req);
   try {
     const sheets = await getSheets();
-    const meta   = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    const meta   = await sheets.spreadsheets.get({ spreadsheetId });
     const titles = meta.data.sheets.map(s => s.properties.title).filter(isSalesSheet);
     const allRows = [];
     for (const title of titles) {
-      const r = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${title}!A2:T` });
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${title}!A2:S` });
       (r.data.values || []).forEach((row, i) => {
-        const rowAgencyId = row[19] || 'default';
-        if (rowAgencyId !== agencyId) return; // изоляция по агентству
         allRows.push({
           id            : `${title}|${i + 2}`,
           date          : row[0]  || '',
@@ -418,6 +583,7 @@ app.get('/api/sales', async (req, res) => {
 
 app.put('/api/sales/:id', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
+  const spreadsheetId = sessionSpreadsheetId(req);
   try {
     const rawId      = decodeURIComponent(req.params.id);
     const lastPipe   = rawId.lastIndexOf('|');
@@ -425,7 +591,7 @@ app.put('/api/sales/:id', async (req, res) => {
     const rowIndex   = parseInt(rawId.slice(lastPipe + 1));
     const sheets = await getSheets();
     await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID, range: `${sheetTitle}!D${rowIndex}`,
+      spreadsheetId, range: `${sheetTitle}!D${rowIndex}`,
       valueInputOption: 'RAW', requestBody: { values: [[Number(req.body.salesCount)]] },
     });
     res.json({ success: true });
@@ -434,18 +600,19 @@ app.put('/api/sales/:id', async (req, res) => {
 
 app.delete('/api/sales/:id', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
+  const spreadsheetId = sessionSpreadsheetId(req);
   try {
     const rawId      = decodeURIComponent(req.params.id);
     const lastPipe   = rawId.lastIndexOf('|');
     const sheetTitle = rawId.slice(0, lastPipe);
     const rowIndex   = parseInt(rawId.slice(lastPipe + 1));
     const sheets = await getSheets();
-    const meta   = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+    const meta   = await sheets.spreadsheets.get({ spreadsheetId });
     const sheet  = meta.data.sheets.find(s => s.properties.title === sheetTitle);
     if (!sheet) return res.json({ success: false, error: 'Лист не найден' });
     await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
-      requestBody  : { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: rowIndex - 1, endIndex: rowIndex } } }] },
+      spreadsheetId,
+      requestBody: { requests: [{ deleteDimension: { range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: rowIndex - 1, endIndex: rowIndex } } }] },
     });
     res.json({ success: true });
   } catch (e) { res.json({ success: false, error: e.message }); }

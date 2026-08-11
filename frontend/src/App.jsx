@@ -19,11 +19,12 @@ const ALL_TABS = [
 const MANAGER_TABS = new Set(['form', 'dash'])
 
 function readSession() {
-  const token    = sessionStorage.getItem('crm_token')
-  const role     = sessionStorage.getItem('crm_role')
-  const name     = sessionStorage.getItem('crm_name')
-  const agencyId = sessionStorage.getItem('crm_agency_id') || 'default'
-  if (token && role) return { token, role, name, agencyId }
+  const token         = sessionStorage.getItem('crm_token')
+  const role          = sessionStorage.getItem('crm_role')
+  const name          = sessionStorage.getItem('crm_name')
+  const agencyId      = sessionStorage.getItem('crm_agency_id') || 'default'
+  const spreadsheetId = sessionStorage.getItem('crm_spreadsheet') || ''
+  if (token && role) return { token, role, name, agencyId, spreadsheetId }
   return null
 }
 
@@ -34,7 +35,8 @@ export default function App() {
   const [authPage, setAuthPage] = useState('login') // 'login' | 'register'
 
   function handleLogin(sess) {
-    sessionStorage.setItem('crm_agency_id', sess.agencyId || 'default')
+    sessionStorage.setItem('crm_agency_id',   sess.agencyId || 'default')
+    sessionStorage.setItem('crm_spreadsheet', sess.spreadsheetId || '')
     setSession(sess)
     setActive('form')
     setAuthPage('login')
@@ -77,6 +79,21 @@ export default function App() {
               {isAdmin ? '👑 Администратор' : '👤 Менеджер'}
             </div>
           </div>
+          {isAdmin && session.spreadsheetId && (
+            <a
+              href={`https://docs.google.com/spreadsheets/d/${session.spreadsheetId}/edit`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 10,
+                padding: '6px 12px', color: '#fff', fontSize: 13, cursor: 'pointer',
+                fontFamily: 'inherit', fontWeight: 600, textDecoration: 'none',
+              }}
+              title="Открыть таблицу Google Sheets"
+            >
+              📊
+            </a>
+          )}
           <button
             onClick={handleLogout}
             style={{

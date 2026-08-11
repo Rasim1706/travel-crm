@@ -14,11 +14,12 @@ export default function Login({ onLogin, onRegister }) {
     try {
       const r = await api.login(login.trim(), password)
       if (r.success) {
-        sessionStorage.setItem('crm_token',     r.token)
-        sessionStorage.setItem('crm_role',      r.role)
-        sessionStorage.setItem('crm_name',      r.name)
-        sessionStorage.setItem('crm_agency_id', r.agencyId || 'default')
-        onLogin({ token: r.token, role: r.role, name: r.name, agencyId: r.agencyId || 'default' })
+        sessionStorage.setItem('crm_token',       r.token)
+        sessionStorage.setItem('crm_role',        r.role)
+        sessionStorage.setItem('crm_name',        r.name)
+        sessionStorage.setItem('crm_agency_id',   r.agencyId || 'default')
+        sessionStorage.setItem('crm_spreadsheet', r.spreadsheetId || '')
+        onLogin({ token: r.token, role: r.role, name: r.name, agencyId: r.agencyId || 'default', spreadsheetId: r.spreadsheetId || '' })
       } else {
         setError(r.error || 'Неверный логин или пароль')
       }
