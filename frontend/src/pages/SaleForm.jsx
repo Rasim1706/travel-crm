@@ -6,6 +6,17 @@ import { HOTELS_CATALOG } from '../data/hotelsCatalog'
 
 const CURRENCIES = ['USD', 'EUR', 'UZS']
 
+const PAYMENT_METHODS = [
+  { id: 'cash_uzs',     icon: '💵', label: 'Наличные',     sub: 'в сумах'   },
+  { id: 'transfer_uzs', icon: '📲', label: 'Перевод',      sub: 'в сумах'   },
+  { id: 'qr_uzs',       icon: '📱', label: 'QR-код',       sub: 'в сумах'   },
+  { id: 'bank',         icon: '🏦', label: 'Перечисление', sub: ''          },
+  { id: 'requisites',   icon: '📋', label: 'По реквизитам',sub: ''          },
+  { id: 'visa_usd',     icon: '💳', label: 'Visa карта',   sub: '$'         },
+  { id: 'cash_usd',     icon: '💵', label: 'Наличные',     sub: '$'         },
+  { id: 'mixed',        icon: '🔀', label: 'Смешанная',    sub: 'сум + $'   },
+]
+
 function today() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -78,13 +89,16 @@ export default function SaleForm({ session }) {
   const [salesCount,     setSalesCount]     = useState(1)
 
   // Шаг 4 — Финансы
-  const [amount,      setAmount]      = useState('')
-  const [currency,    setCurrency]    = useState('USD')
-  const [rate,        setRate]        = useState('')
-  const [netto,       setNetto]       = useState('')
-  const [prepayment,  setPrepayment]  = useState('')
-  const [commission,  setCommission]  = useState('')
-  const [discount,    setDiscount]    = useState('')
+  const [amount,       setAmount]       = useState('')
+  const [currency,     setCurrency]     = useState('USD')
+  const [rate,         setRate]         = useState('')
+  const [netto,        setNetto]        = useState('')
+  const [prepayment,   setPrepayment]   = useState('')
+  const [commission,   setCommission]   = useState('')
+  const [discount,     setDiscount]     = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('')
+  const [paymentUZS,   setPaymentUZS]   = useState('')
+  const [paymentUSD,   setPaymentUSD]   = useState('')
 
   const [loading, setLoading] = useState(false)
   const { toast, show } = useToast()
@@ -138,6 +152,9 @@ export default function SaleForm({ session }) {
         prepayment: prepayment || undefined,
         commission: commission || undefined,
         discount: discount || undefined,
+        paymentMethod: paymentMethod || undefined,
+        paymentUZS: paymentUZS || undefined,
+        paymentUSD: paymentUSD || undefined,
       })
       if (res.success) {
         show('✅ Запись сохранена!')
@@ -148,6 +165,7 @@ export default function SaleForm({ session }) {
         setContractNumber(''); setSalesCount(1)
         setAmount(''); setRate(''); setNetto(''); setPrepayment('')
         setCommission(''); setDiscount('')
+        setPaymentMethod(''); setPaymentUZS(''); setPaymentUSD('')
       } else {
         show('❌ ' + res.error, 'error')
       }
@@ -363,6 +381,72 @@ export default function SaleForm({ session }) {
               </div>
             </div>
           )}
+
+          {/* ── Способ оплаты ── */}
+          <div className="form-group">
+            <label className="label">Способ оплаты</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {PAYMENT_METHODS.map(pm => {
+                const selected = paymentMethod === pm.id
+                return (
+                  <button
+                    key={pm.id}
+                    type="button"
+                    onClick={() => setPaymentMethod(selected ? '' : pm.id)}
+                    style={{
+                      padding: '10px 6px', borderRadius: 12, border: '1.5px solid',
+                      borderColor: selected ? 'var(--primary)' : 'var(--border)',
+                      background: selected ? 'var(--primary)' : '#f8fafc',
+                      color: selected ? '#fff' : 'var(--text)',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                      transition: 'all .15s',
+                    }}
+                  >
+                    <span style={{ fontSize: 20 }}>{pm.icon}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.2, textAlign: 'center' }}>{pm.label}</span>
+                    {pm.sub && <span style={{ fontSize: 10, opacity: selected ? 0.85 : 0.5, lineHeight: 1 }}>{pm.sub}</span>}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Смешанная оплата — доп. поля */}
+            {paymentMethod === 'mixed' && (
+              <div style={{
+                marginTop: 12, padding: '14px', background: '#f0f9ff',
+                border: '1.5px solid #bae6fd', borderRadius: 14,
+                display: 'flex', flexDirection: 'column', gap: 10,
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#0369a1' }}>
+                  🔀 Разбивка смешанной оплаты
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                      Часть в сумах (UZS)
+                    </label>
+                    <input className="input" type="number" min="0" placeholder="0"
+                      style={{ marginBottom: 0 }}
+                      value={paymentUZS} onChange={e => setPaymentUZS(e.target.value)} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
+                      Часть в долларах ($)
+                    </label>
+                    <input className="input" type="number" min="0" placeholder="0"
+                      style={{ marginBottom: 0 }}
+                      value={paymentUSD} onChange={e => setPaymentUSD(e.target.value)} />
+                  </div>
+                </div>
+                {paymentUZS && paymentUSD && rate && (
+                  <div style={{ fontSize: 12, color: '#0369a1' }}>
+                    ≈ {(Number(paymentUSD) + Number(paymentUZS) / Number(rate)).toFixed(0)} $ итого
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Комиссия — авто из amount−netto, редактируемая */}
           <div className="form-group">
