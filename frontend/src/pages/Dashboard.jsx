@@ -161,6 +161,11 @@ export default function Dashboard() {
   const [editPrepVal, setEditPrepVal] = useState('')
   const [savingPrep,  setSavingPrep]  = useState(false)
 
+  // Inline редактирование долга
+  const [editDebtId,  setEditDebtId]  = useState(null)
+  const [editDebtVal, setEditDebtVal] = useState('')
+  const [savingDebt,  setSavingDebt]  = useState(false)
+
   const [deletingId,       setDeletingId]       = useState(null)
   const [callListOpen,     setCallListOpen]      = useState(true)
   const [paymentDueOpen,   setPaymentDueOpen]    = useState(true)
@@ -277,6 +282,19 @@ export default function Dashboard() {
       const res = await api.updateSale(id, { salesCount: val })
       if (res.success) setSales(prev => prev.map(s => s.id === id ? { ...s, salesCount: val } : s))
     } finally { setSaving(false); setEditingId(null) }
+  }
+
+  // ── Редактирование долга ──────────────────────────
+  async function saveDebt(id) {
+    const val = Number(editDebtVal)
+    if (isNaN(val) || val < 0) { setEditDebtId(null); return }
+    setSavingDebt(true)
+    try {
+      const res = await api.updateSale(id, { debt: val })
+      if (res.success) {
+        setSales(prev => prev.map(s => s.id === id ? { ...s, debt: val } : s))
+      }
+    } finally { setSavingDebt(false); setEditDebtId(null) }
   }
 
   // ── Редактирование предоплаты ─────────────────────
@@ -656,13 +674,38 @@ export default function Dashboard() {
                           )}
                         </td>
 
-                        {/* Долг */}
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          {s.debt != null
-                            ? <span style={{ fontWeight: 700, color: s.debt > 0 ? '#ea580c' : '#16a34a' }}>
-                                {s.debt.toLocaleString('ru-RU')}
+                        {/* Долг — inline edit */}
+                        <td style={{ minWidth: 110 }}>
+                          {editDebtId === s.id ? (
+                            <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                              <input
+                                type="number" min="0" value={editDebtVal}
+                                onChange={e => setEditDebtVal(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveDebt(s.id); if (e.key === 'Escape') setEditDebtId(null) }}
+                                autoFocus
+                                style={{ width: 80, padding: '3px 6px', fontSize: 13, border: '1.5px solid #f97316', borderRadius: 6, outline: 'none' }}
+                              />
+                              <button onClick={() => saveDebt(s.id)} disabled={savingDebt}
+                                style={{ background: '#f97316', color: '#fff', border: 'none', borderRadius: 5, padding: '3px 7px', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
+                                {savingDebt ? '…' : '✓'}
+                              </button>
+                              <button onClick={() => setEditDebtId(null)}
+                                style={{ background: '#f1f5f9', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 5px', cursor: 'pointer', fontSize: 12 }}>
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <div
+                              style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', width: 'fit-content' }}
+                              onClick={() => { setEditDebtId(s.id); setEditDebtVal(String(s.debt ?? '')) }}
+                              title="Нажмите чтобы изменить долг"
+                            >
+                              <span style={{ fontWeight: 700, color: s.debt > 0 ? '#ea580c' : s.debt === 0 ? '#16a34a' : 'var(--muted)' }}>
+                                {s.debt != null ? s.debt.toLocaleString('ru-RU') : '—'}
                               </span>
-                            : <span style={{ color: 'var(--muted)' }}>—</span>}
+                              <span style={{ fontSize: 11, opacity: 0.35 }}>✏️</span>
+                            </div>
+                          )}
                         </td>
 
                         {/* Срок оплаты */}
