@@ -209,7 +209,7 @@ export default function App() {
         ))}
       </nav>
 
-      <main className="main">
+      <main className={`main${active === 'dash' ? ' main--wide' : ''}`}>
         {active === 'form'     && <SaleForm  session={session} />}
         {active === 'dash'     && <Dashboard key={dashKey} session={session} />}
         {active === 'finances' && <Finances />}

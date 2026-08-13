@@ -67,7 +67,8 @@ body {
 .tab.tab--active { background: var(--primary); color: #fff; font-weight: 600; }
 
 /* ── Main ── */
-.main { max-width: 860px; margin: 0 auto; padding: 28px 20px; }
+.main       { max-width: 860px; margin: 0 auto; padding: 28px 20px; }
+.main--wide { max-width: 1440px; }
 
 /* ── Card ── */
 .card {
