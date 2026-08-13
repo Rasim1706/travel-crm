@@ -599,15 +599,42 @@ app.put('/api/sales/:id', async (req, res) => {
     const rowIndex   = parseInt(rawId.slice(lastPipe + 1));
     const sheets = await getSheets();
     // Поддерживаем обновление нескольких полей
-    const UPDATABLE = { salesCount: 'D', prepayment: 'R', debt: 'S' };
-    for (const [field, col] of Object.entries(UPDATABLE)) {
+    // col + type для каждого редактируемого поля
+    const UPDATABLE = {
+      contractNumber: { col: 'B', type: 'str' },
+      manager:        { col: 'C', type: 'str' },
+      salesCount:     { col: 'D', type: 'num' },
+      bookingDate:    { col: 'E', type: 'str' },
+      clientName:     { col: 'F', type: 'str' },
+      direction:      { col: 'G', type: 'str' },
+      hotel:          { col: 'H', type: 'str' },
+      phone:          { col: 'I', type: 'str' },
+      source:         { col: 'J', type: 'str' },
+      amount:         { col: 'K', type: 'num' },
+      currency:       { col: 'L', type: 'str' },
+      commission:     { col: 'M', type: 'num' },
+      discount:       { col: 'N', type: 'num' },
+      balance:        { col: 'O', type: 'num' },
+      prepayment:     { col: 'R', type: 'num' },
+      debt:           { col: 'S', type: 'num' },
+      paymentMethod:  { col: 'T', type: 'str' },
+      departureDate:  { col: 'W', type: 'str' },
+      arrivalDate:    { col: 'X', type: 'str' },
+      dueDate:        { col: 'Y', type: 'str' },
+    };
+    const batchData = [];
+    for (const [field, { col, type }] of Object.entries(UPDATABLE)) {
       if (req.body[field] !== undefined) {
-        const val = req.body[field] === '' ? '' : Number(req.body[field]);
-        await sheets.spreadsheets.values.update({
-          spreadsheetId, range: `${sheetTitle}!${col}${rowIndex}`,
-          valueInputOption: 'RAW', requestBody: { values: [[val]] },
-        });
+        const raw = req.body[field];
+        const val = (raw === '' || raw === null) ? '' : (type === 'num' ? Number(raw) : String(raw));
+        batchData.push({ range: `${sheetTitle}!${col}${rowIndex}`, values: [[val]] });
       }
+    }
+    if (batchData.length > 0) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId,
+        requestBody: { valueInputOption: 'RAW', data: batchData },
+      });
     }
     res.json({ success: true });
   } catch (e) { res.json({ success: false, error: e.message }); }

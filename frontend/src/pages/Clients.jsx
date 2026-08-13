@@ -5,7 +5,14 @@ const SORT_OPTIONS = [
   { value: 'contracts', label: 'По договорам' },
   { value: 'sales',     label: 'По продажам'  },
   { value: 'last',      label: 'По последней покупке' },
+  { value: 'departure', label: 'По дате вылета' },
   { value: 'name',      label: 'По имени'     },
+]
+
+const DEBT_FILTERS = [
+  { value: 'all',     label: '👥 Все'         },
+  { value: 'debtors', label: '🔴 Должники'    },
+  { value: 'paid',    label: '✅ Оплатили'    },
 ]
 
 function LtvBadge({ count }) {
@@ -44,9 +51,10 @@ export default function Clients() {
   const [sales,   setSales]   = useState([])
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
-  const [search,  setSearch]  = useState('')
-  const [sortBy,  setSortBy]  = useState('contracts')
-  const [opened,  setOpened]  = useState(null) // expanded client name
+  const [search,      setSearch]      = useState('')
+  const [sortBy,      setSortBy]      = useState('contracts')
+  const [debtFilter,  setDebtFilter]  = useState('all')
+  const [opened,      setOpened]      = useState(null) // expanded client name
 
   useEffect(() => {
     api.getSales()
@@ -118,19 +126,29 @@ export default function Clients() {
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return clients
-      .filter(c => !q ||
-        c.name.toLowerCase().includes(q) ||
-        c.names.some(n => n.toLowerCase().includes(q)) ||
-        (c.phone && c.phone.includes(q))
-      )
+      .filter(c => {
+        if (q && !c.name.toLowerCase().includes(q) &&
+            !c.names.some(n => n.toLowerCase().includes(q)) &&
+            !(c.phone && c.phone.includes(q))) return false
+        if (debtFilter === 'debtors') return c.totalDebt > 0
+        if (debtFilter === 'paid')    return c.totalDebt === 0
+        return true
+      })
       .sort((a, b) => {
         if (sortBy === 'contracts') return b.contracts - a.contracts
         if (sortBy === 'sales')     return b.totalSales - a.totalSales
         if (sortBy === 'last')      return (b.lastDate || 0) - (a.lastDate || 0)
         if (sortBy === 'name')      return a.name.localeCompare(b.name, 'ru')
+        if (sortBy === 'departure') {
+          const getMaxDep = c => {
+            const dates = c.records.filter(r => r.departureDate).map(r => new Date(r.departureDate).getTime())
+            return dates.length ? Math.max(...dates) : 0
+          }
+          return getMaxDep(b) - getMaxDep(a)
+        }
         return 0
       })
-  }, [clients, search, sortBy])
+  }, [clients, search, sortBy, debtFilter])
 
   const totalClients   = clients.length
   const repeatClients  = clients.filter(c => c.contracts >= 2).length
@@ -162,9 +180,9 @@ export default function Clients() {
         </div>
       </div>
 
-      {/* Поиск + сортировка */}
+      {/* Поиск + сортировка + фильтр */}
       <div className="card">
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <input
             className="input"
             style={{ flex: 1, minWidth: 180, marginBottom: 0 }}
@@ -182,6 +200,22 @@ export default function Clients() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+        </div>
+        {/* Фильтр по оплате */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {DEBT_FILTERS.map(f => (
+            <button key={f.value} onClick={() => setDebtFilter(f.value)}
+              style={{
+                padding: '7px 16px', borderRadius: 980, border: '1.5px solid',
+                borderColor: debtFilter === f.value ? 'var(--primary)' : 'var(--border)',
+                background: debtFilter === f.value ? 'var(--primary)' : '#fff',
+                color: debtFilter === f.value ? '#fff' : 'var(--text)',
+                cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600,
+                transition: 'all .15s',
+              }}>
+              {f.label}
+            </button>
+          ))}
         </div>
       </div>
 

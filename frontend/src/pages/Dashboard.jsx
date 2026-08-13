@@ -137,6 +137,9 @@ function formatDateTime(iso) {
   return isNaN(d) ? '—' : d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 }
 
+const LBL = { fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em' }
+const INP = { marginBottom: 0 }
+
 export default function Dashboard() {
   const { monday, sunday } = getWeekBounds()
   const now = new Date()
@@ -151,24 +154,24 @@ export default function Dashboard() {
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState(null)
 
-  // Редактирование кол-во людей
-  const [editingId,  setEditingId]  = useState(null)
-  const [editVal,    setEditVal]    = useState('')
-  const [saving,     setSaving]     = useState(false)
-
-  // Inline редактирование предоплаты
+  // Inline предоплата
   const [editPrepId,  setEditPrepId]  = useState(null)
   const [editPrepVal, setEditPrepVal] = useState('')
   const [savingPrep,  setSavingPrep]  = useState(false)
 
-  // Inline редактирование долга
+  // Inline долг
   const [editDebtId,  setEditDebtId]  = useState(null)
   const [editDebtVal, setEditDebtVal] = useState('')
   const [savingDebt,  setSavingDebt]  = useState(false)
 
-  const [deletingId,       setDeletingId]       = useState(null)
-  const [callListOpen,     setCallListOpen]      = useState(true)
-  const [paymentDueOpen,   setPaymentDueOpen]    = useState(true)
+  // Модальное редактирование заявки
+  const [editModalSale, setEditModalSale] = useState(null)
+  const [editModalData, setEditModalData] = useState({})
+  const [savingModal,   setSavingModal]   = useState(false)
+
+  const [deletingId,     setDeletingId]     = useState(null)
+  const [callListOpen,   setCallListOpen]   = useState(true)
+  const [paymentDueOpen, setPaymentDueOpen] = useState(true)
 
   useEffect(() => {
     api.getSales()
@@ -177,7 +180,6 @@ export default function Dashboard() {
       .finally(() => setLoading(false))
   }, [])
 
-  // ── Фильтрация по диапазону ───────────────────────
   const from = new Date(dateFrom + 'T00:00:00')
   const to   = new Date(dateTo   + 'T23:59:59')
   const filtered = sales.filter(s => {
@@ -187,7 +189,6 @@ export default function Dashboard() {
            (bd && !isNaN(bd) && bd >= from && bd <= to)
   })
 
-  // ── Статистика ────────────────────────────────────
   let totalContracts = 0, totalSales = 0, totalCommission = 0, totalPrepayment = 0, totalDebt = 0
   let hasPrepayment = false
   filtered.forEach(s => {
@@ -198,7 +199,7 @@ export default function Dashboard() {
     if (s.debt       != null) totalDebt += s.debt
   })
 
-  // ── Клиенты не покупавшие > 3 мес ────────────────
+  // Напоминания: кому позвонить
   const threeMonthsAgo = new Date()
   threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
   const clientLastSale = {}
@@ -214,27 +215,19 @@ export default function Dashboard() {
     .sort((a, b) => a[1].date - b[1].date)
     .map(([name, v]) => ({ name, ...v }))
 
-  // ── Напоминания об оплате (dueDate ≤ 20 дней, долг > 0) ──
-  const paymentDueReminders = sales
-    .filter(s => {
-      if (!s.dueDate || !s.debt || s.debt <= 0) return false
-      const due = new Date(s.dueDate)
-      return !isNaN(due) && due >= todayStart && due <= in20days
-    })
-    .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
-
-  // ── Просроченные долги (dueDate уже прошёл, долг > 0) ──
-  const overdueReminders = sales
-    .filter(s => {
-      if (!s.dueDate || !s.debt || s.debt <= 0) return false
-      const due = new Date(s.dueDate)
-      return !isNaN(due) && due < todayStart
-    })
-    .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
-
+  // Напоминания: долги
+  const overdueReminders = sales.filter(s => {
+    if (!s.dueDate || !s.debt || s.debt <= 0) return false
+    return new Date(s.dueDate) < todayStart
+  }).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+  const paymentDueReminders = sales.filter(s => {
+    if (!s.dueDate || !s.debt || s.debt <= 0) return false
+    const due = new Date(s.dueDate)
+    return !isNaN(due) && due >= todayStart && due <= in20days
+  }).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
   const allDueReminders = [...overdueReminders, ...paymentDueReminders]
 
-  // ── Топ направлений/отелей ────────────────────────
+  // Топ направлений/отелей
   const dirMap = {}, hotelMap = {}
   filtered.forEach(s => {
     if (s.direction) dirMap[s.direction] = (dirMap[s.direction] || 0) + 1
@@ -243,7 +236,7 @@ export default function Dashboard() {
   const topDirections = Object.entries(dirMap).sort((a,b) => b[1]-a[1]).slice(0,8).map(([label,count]) => ({ label, count }))
   const topHotels     = Object.entries(hotelMap).sort((a,b) => b[1]-a[1]).slice(0,8).map(([label,count]) => ({ label, count }))
 
-  // ── Круговой график ───────────────────────────────
+  // Круговой график
   const { from: monthFrom, to: monthTo } = getMonthBounds(pieYear, pieMonth)
   const monthSalesMap = {}
   sales.forEach(s => {
@@ -266,38 +259,13 @@ export default function Dashboard() {
   }
   const isCurrentMonth = pieYear === now.getFullYear() && pieMonth === now.getMonth()
 
-  // ── Удаление ──────────────────────────────────────
   async function confirmDelete(id) {
     const res = await api.deleteSale(id)
     if (res.success) setSales(prev => prev.filter(s => s.id !== id))
     setDeletingId(null)
   }
 
-  // ── Редактирование кол-ва людей ───────────────────
-  async function saveEdit(id) {
-    const val = parseInt(editVal)
-    if (isNaN(val) || val < 1) { setEditingId(null); return }
-    setSaving(true)
-    try {
-      const res = await api.updateSale(id, { salesCount: val })
-      if (res.success) setSales(prev => prev.map(s => s.id === id ? { ...s, salesCount: val } : s))
-    } finally { setSaving(false); setEditingId(null) }
-  }
-
-  // ── Редактирование долга ──────────────────────────
-  async function saveDebt(id) {
-    const val = Number(editDebtVal)
-    if (isNaN(val) || val < 0) { setEditDebtId(null); return }
-    setSavingDebt(true)
-    try {
-      const res = await api.updateSale(id, { debt: val })
-      if (res.success) {
-        setSales(prev => prev.map(s => s.id === id ? { ...s, debt: val } : s))
-      }
-    } finally { setSavingDebt(false); setEditDebtId(null) }
-  }
-
-  // ── Редактирование предоплаты ─────────────────────
+  // ── Inline предоплата ─────────────────────────────
   async function savePrepayment(id) {
     const val = Number(editPrepVal)
     if (isNaN(val) || val < 0) { setEditPrepId(null); return }
@@ -305,17 +273,90 @@ export default function Dashboard() {
     try {
       const sale = sales.find(s => s.id === id)
       const newDebt = (sale?.amount != null) ? Math.round((sale.amount - val) * 100) / 100 : null
-      const res = await api.updateSale(id, {
-        prepayment: val,
-        debt: newDebt !== null ? newDebt : '',
-      })
-      if (res.success) {
-        setSales(prev => prev.map(s => s.id === id
-          ? { ...s, prepayment: val, debt: newDebt }
-          : s
-        ))
-      }
+      const res = await api.updateSale(id, { prepayment: val, debt: newDebt !== null ? newDebt : '' })
+      if (res.success)
+        setSales(prev => prev.map(s => s.id === id ? { ...s, prepayment: val, debt: newDebt } : s))
     } finally { setSavingPrep(false); setEditPrepId(null) }
+  }
+
+  // ── Inline долг ───────────────────────────────────
+  async function saveDebt(id) {
+    const val = Number(editDebtVal)
+    if (isNaN(val) || val < 0) { setEditDebtId(null); return }
+    setSavingDebt(true)
+    try {
+      const res = await api.updateSale(id, { debt: val })
+      if (res.success)
+        setSales(prev => prev.map(s => s.id === id ? { ...s, debt: val } : s))
+    } finally { setSavingDebt(false); setEditDebtId(null) }
+  }
+
+  // ── Модальное редактирование ──────────────────────
+  function openEditModal(sale) {
+    setEditModalSale(sale)
+    setEditModalData({
+      clientName:     sale.clientName     || '',
+      phone:          sale.phone          || '',
+      direction:      sale.direction      || '',
+      hotel:          sale.hotel          || '',
+      bookingDate:    sale.bookingDate    || '',
+      departureDate:  sale.departureDate  || '',
+      arrivalDate:    sale.arrivalDate    || '',
+      contractNumber: sale.contractNumber || '',
+      manager:        sale.manager        || '',
+      salesCount:     sale.salesCount     || 1,
+      amount:         sale.amount         ?? '',
+      currency:       sale.currency       || 'USD',
+      prepayment:     sale.prepayment     ?? '',
+      debt:           sale.debt           ?? '',
+      dueDate:        sale.dueDate        || '',
+      paymentMethod:  sale.paymentMethod  || '',
+      commission:     sale.commission     ?? '',
+      discount:       sale.discount       ?? '',
+    })
+  }
+
+  async function saveModal() {
+    if (!editModalSale) return
+    setSavingModal(true)
+    try {
+      const d = editModalData
+      const payload = {
+        clientName:     d.clientName,
+        phone:          d.phone,
+        direction:      d.direction,
+        hotel:          d.hotel,
+        bookingDate:    d.bookingDate,
+        departureDate:  d.departureDate,
+        arrivalDate:    d.arrivalDate,
+        contractNumber: d.contractNumber,
+        manager:        d.manager,
+        salesCount:     Number(d.salesCount) || 1,
+        amount:         d.amount     === '' ? '' : Number(d.amount),
+        currency:       d.currency,
+        prepayment:     d.prepayment === '' ? '' : Number(d.prepayment),
+        debt:           d.debt       === '' ? '' : Number(d.debt),
+        dueDate:        d.dueDate,
+        paymentMethod:  d.paymentMethod,
+        commission:     d.commission === '' ? '' : Number(d.commission),
+        discount:       d.discount   === '' ? '' : Number(d.discount),
+      }
+      if (payload.commission !== '' && payload.discount !== '')
+        payload.balance = Math.round((Number(payload.commission) - (Number(payload.discount) || 0)) * 100) / 100
+
+      const res = await api.updateSale(editModalSale.id, payload)
+      if (res.success) {
+        setSales(prev => prev.map(s => s.id === editModalSale.id ? {
+          ...s, ...payload,
+          amount:     payload.amount     === '' ? null : Number(payload.amount),
+          prepayment: payload.prepayment === '' ? null : Number(payload.prepayment),
+          debt:       payload.debt       === '' ? null : Number(payload.debt),
+          commission: payload.commission === '' ? null : Number(payload.commission),
+          salesCount: Number(payload.salesCount),
+        } : s))
+        setEditModalSale(null)
+      }
+    } finally { setSavingModal(false) }
   }
 
   if (loading) return <div className="loader">⏳ Загрузка данных...</div>
@@ -325,7 +366,7 @@ export default function Dashboard() {
 
   return (
     <>
-      {/* ── Напоминания: кому позвонить ── */}
+      {/* ── Кому позвонить ── */}
       {callReminders.length > 0 && (
         <div style={{ background: 'linear-gradient(135deg, #fff7ed, #fff)', border: '1.5px solid #fed7aa', borderRadius: 20, marginBottom: 16, overflow: 'hidden' }}>
           <button onClick={() => setCallListOpen(o => !o)}
@@ -348,10 +389,8 @@ export default function Dashboard() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 14 }}>{c.name}</div>
-                        <div style={{ fontSize: 12, color: '#9a3412', marginTop: 2 }}>
-                          {c.direction && `✈️ ${c.direction} · `}менеджер: {c.manager}
-                        </div>
-                        {c.phone && <a href={`tel:${c.phone}`} style={{ display: 'inline-block', marginTop: 4, fontSize: 12, fontWeight: 600, color: '#007aff', textDecoration: 'none' }}>📱 {c.phone}</a>}
+                        <div style={{ fontSize: 12, color: '#9a3412', marginTop: 2 }}>{c.direction && `✈️ ${c.direction} · `}менеджер: {c.manager}</div>
+                        {c.phone && <a href={`tel:${c.phone}`} style={{ fontSize: 12, color: '#007aff', textDecoration: 'none' }}>📱 {c.phone}</a>}
                       </div>
                       <div style={{ background: '#ffedd5', color: '#c2410c', borderRadius: 8, fontSize: 11, fontWeight: 700, padding: '3px 8px' }}>{months} мес. назад</div>
                     </div>
@@ -363,7 +402,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Напоминания: долги ── */}
+      {/* ── Долги ── */}
       {allDueReminders.length > 0 && (
         <div style={{ background: 'linear-gradient(135deg, #fef2f2, #fff)', border: '1.5px solid #fca5a5', borderRadius: 20, marginBottom: 16, overflow: 'hidden' }}>
           <button onClick={() => setPaymentDueOpen(o => !o)}
@@ -382,34 +421,18 @@ export default function Dashboard() {
                   const daysLeft = Math.ceil((due - todayStart) / 86400000)
                   const isOverdue = daysLeft < 0
                   return (
-                    <div key={i} style={{
-                      background: '#fff', borderRadius: 12, padding: '12px 14px',
-                      border: `1px solid ${isOverdue ? '#fca5a5' : '#fed7aa'}`,
-                      display: 'flex', alignItems: 'center', gap: 12,
-                    }}>
-                      <div style={{
-                        width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
-                        background: isOverdue ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #f97316, #ea580c)',
-                        color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16,
-                      }}>
+                    <div key={i} style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', border: `1px solid ${isOverdue ? '#fca5a5' : '#fed7aa'}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, background: isOverdue ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'linear-gradient(135deg, #f97316, #ea580c)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 }}>
                         {isOverdue ? '⚠️' : '⏰'}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{s.clientName || '—'}</div>
-                        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                          📄 {s.contractNumber} · {s.direction || ''} · {s.manager}
-                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>📄 {s.contractNumber} · {s.direction || ''} · {s.manager}</div>
                         {s.phone && <a href={`tel:${s.phone}`} style={{ fontSize: 12, color: '#007aff', textDecoration: 'none' }}>📱 {s.phone}</a>}
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: 16, color: isOverdue ? '#dc2626' : '#ea580c' }}>
-                          {s.debt?.toLocaleString('ru-RU')} {s.currency || ''}
-                        </div>
-                        <div style={{
-                          background: isOverdue ? '#fef2f2' : '#fff7ed',
-                          color: isOverdue ? '#dc2626' : '#c2410c',
-                          borderRadius: 8, fontSize: 11, fontWeight: 700, padding: '3px 8px', marginTop: 4,
-                        }}>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: isOverdue ? '#dc2626' : '#ea580c' }}>{s.debt?.toLocaleString('ru-RU')} {s.currency || ''}</div>
+                        <div style={{ background: isOverdue ? '#fef2f2' : '#fff7ed', color: isOverdue ? '#dc2626' : '#c2410c', borderRadius: 8, fontSize: 11, fontWeight: 700, padding: '3px 8px', marginTop: 4 }}>
                           {isOverdue ? `Просрочен ${Math.abs(daysLeft)} дн.` : `через ${daysLeft} дн.`}
                         </div>
                       </div>
@@ -422,7 +445,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Диапазон дат ── */}
+      {/* ── Период ── */}
       <div className="card">
         <div className="card-title">📅 Период</div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -449,7 +472,7 @@ export default function Dashboard() {
         </div>
         <div className="stat-card">
           <div className="stat-number">{totalSales}</div>
-          <div className="stat-label">🛒 Продаж</div>
+          <div className="stat-label">👥 Туристы</div>
         </div>
         <div className="stat-card" style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1.5px solid #86efac' }}>
           <div className="stat-number" style={{ color: '#15803d', fontSize: 20 }}>{totalCommission.toLocaleString('ru-RU')} $</div>
@@ -486,11 +509,9 @@ export default function Dashboard() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div className="card-title" style={{ margin: 0 }}>🥧 Продажи по менеджерам</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={prevMonth}
-              style={{ background: '#f1f5f9', border: '1px solid var(--border)', borderRadius: 6, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+            <button onClick={prevMonth} style={{ background: '#f1f5f9', border: '1px solid var(--border)', borderRadius: 6, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
             <span style={{ fontSize: 13, fontWeight: 600, minWidth: 110, textAlign: 'center' }}>{monthLabel}</span>
-            <button onClick={nextMonth} disabled={isCurrentMonth}
-              style={{ background: isCurrentMonth ? '#f8fafc' : '#f1f5f9', border: '1px solid var(--border)', borderRadius: 6, width: 32, height: 32, cursor: isCurrentMonth ? 'default' : 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isCurrentMonth ? 0.4 : 1 }}>›</button>
+            <button onClick={nextMonth} disabled={isCurrentMonth} style={{ background: isCurrentMonth ? '#f8fafc' : '#f1f5f9', border: '1px solid var(--border)', borderRadius: 6, width: 32, height: 32, cursor: isCurrentMonth ? 'default' : 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isCurrentMonth ? 0.4 : 1 }}>›</button>
           </div>
         </div>
         {pieData.length === 0
@@ -509,8 +530,7 @@ export default function Dashboard() {
               if (!s.manager) return
               if (!mgrMap[s.manager]) mgrMap[s.manager] = { contracts: 0, people: 0, balance: null, prepayment: null, debt: null }
               const m = mgrMap[s.manager]
-              m.contracts++
-              m.people += s.salesCount || 0
+              m.contracts++; m.people += s.salesCount || 0
               if (s.balance    != null) m.balance    = (m.balance    || 0) + s.balance
               if (s.prepayment != null) m.prepayment = (m.prepayment || 0) + s.prepayment
               if (s.debt       != null) m.debt       = (m.debt       || 0) + s.debt
@@ -524,7 +544,7 @@ export default function Dashboard() {
                     <tr>
                       <th>#</th><th>Менеджер</th>
                       <th style={{ textAlign: 'center' }}>Заявок</th>
-                      <th style={{ textAlign: 'center' }}>Людей</th>
+                      <th style={{ textAlign: 'center' }}>Туристов</th>
                       <th>Комиссия ($)</th>
                       {showFinance && <th>Предоплата</th>}
                       {showFinance && <th>Долг</th>}
@@ -537,21 +557,9 @@ export default function Dashboard() {
                         <td style={{ fontWeight: 600 }}>{name}</td>
                         <td style={{ textAlign: 'center' }}><span className="badge">{m.contracts}</span></td>
                         <td style={{ textAlign: 'center' }}><span className="badge">{m.people}</span></td>
-                        <td>
-                          {m.balance == null
-                            ? <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
-                            : <span style={{ fontWeight: 700, fontSize: 13, color: m.balance >= 0 ? '#16a34a' : '#dc2626' }}>{m.balance.toLocaleString('ru-RU')} $</span>}
-                        </td>
-                        {showFinance && (
-                          <td style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>
-                            {m.prepayment != null ? m.prepayment.toLocaleString('ru-RU') : '—'}
-                          </td>
-                        )}
-                        {showFinance && (
-                          <td style={{ fontSize: 13, fontWeight: 600, color: m.debt > 0 ? '#ea580c' : '#16a34a' }}>
-                            {m.debt != null ? m.debt.toLocaleString('ru-RU') : '—'}
-                          </td>
-                        )}
+                        <td>{m.balance == null ? <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span> : <span style={{ fontWeight: 700, fontSize: 13, color: m.balance >= 0 ? '#16a34a' : '#dc2626' }}>{m.balance.toLocaleString('ru-RU')} $</span>}</td>
+                        {showFinance && <td style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>{m.prepayment != null ? m.prepayment.toLocaleString('ru-RU') : '—'}</td>}
+                        {showFinance && <td style={{ fontSize: 13, fontWeight: 600, color: m.debt > 0 ? '#ea580c' : '#16a34a' }}>{m.debt != null ? m.debt.toLocaleString('ru-RU') : '—'}</td>}
                       </tr>
                     ))}
                   </tbody>
@@ -561,7 +569,7 @@ export default function Dashboard() {
           })()}
       </div>
 
-      {/* ── Все записи за период (таблица) ── */}
+      {/* ── Записи за период ── */}
       <div className="card">
         <div className="card-title">📋 Записи за период ({filtered.length})</div>
         {filtered.length === 0
@@ -588,118 +596,88 @@ export default function Dashboard() {
                 <tbody>
                   {filtered.map(s => {
                     const dueD = s.dueDate ? new Date(s.dueDate) : null
-                    const daysLeft = dueD ? Math.ceil((dueD - todayStart) / 86400000) : null
-                    const isOverdue  = daysLeft !== null && daysLeft < 0 && s.debt > 0
-                    const isDueSoon  = daysLeft !== null && daysLeft >= 0 && daysLeft <= 20 && s.debt > 0
+                    const daysLeft  = dueD ? Math.ceil((dueD - todayStart) / 86400000) : null
+                    const isOverdue = daysLeft !== null && daysLeft < 0 && s.debt > 0
+                    const isDueSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 20 && s.debt > 0
                     const statusColor = (!s.debt || s.debt <= 0) ? '#22c55e' : isOverdue ? '#ef4444' : isDueSoon ? '#f97316' : '#ef4444'
 
                     return (
                       <tr key={s.id}>
-                        {/* Статус-точка */}
-                        <td>
-                          <div style={{ width: 9, height: 9, borderRadius: '50%', background: statusColor, margin: '0 auto' }} title={
-                            !s.debt || s.debt <= 0 ? 'Оплачено' : isOverdue ? 'Просрочен' : isDueSoon ? 'Скоро дедлайн' : 'Долг'
-                          } />
-                        </td>
+                        <td><div style={{ width: 9, height: 9, borderRadius: '50%', background: statusColor, margin: '0 auto' }} /></td>
 
-                        {/* Договор */}
                         <td>
                           <div style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{s.contractNumber}</div>
                           <div style={{ fontSize: 11, color: 'var(--muted)' }}>{formatDateTime(s.date)}</div>
                         </td>
 
-                        {/* Клиент */}
                         <td>
                           <div style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{s.clientName || '—'}</div>
-                          {s.phone && (
-                            <a href={`tel:${s.phone}`} style={{ fontSize: 11, color: '#007aff', textDecoration: 'none' }}>
-                              {s.phone}
-                            </a>
-                          )}
+                          {s.phone && <a href={`tel:${s.phone}`} style={{ fontSize: 11, color: '#007aff', textDecoration: 'none' }}>{s.phone}</a>}
                         </td>
 
-                        {/* Направление */}
                         <td>
                           {s.direction && <div style={{ whiteSpace: 'nowrap' }}>{s.direction}</div>}
                           {s.hotel && <div style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.hotel}</div>}
                           {!s.direction && !s.hotel && <span style={{ color: 'var(--muted)' }}>—</span>}
                         </td>
 
-                        {/* Вылет / Прилёт */}
                         <td style={{ whiteSpace: 'nowrap' }}>
                           {s.departureDate && <div style={{ fontSize: 12 }}>✈️ {formatDate(s.departureDate)}</div>}
                           {s.arrivalDate   && <div style={{ fontSize: 12, color: 'var(--muted)' }}>🛬 {formatDate(s.arrivalDate)}</div>}
                           {!s.departureDate && !s.arrivalDate && <span style={{ color: 'var(--muted)' }}>—</span>}
                         </td>
 
-                        {/* Сумма */}
                         <td style={{ whiteSpace: 'nowrap' }}>
-                          {s.amount != null
-                            ? <span style={{ fontWeight: 700 }}>{s.amount.toLocaleString('ru-RU')} {s.currency}</span>
-                            : <span style={{ color: 'var(--muted)' }}>—</span>}
+                          {s.amount != null ? <span style={{ fontWeight: 700 }}>{s.amount.toLocaleString('ru-RU')} {s.currency}</span> : <span style={{ color: 'var(--muted)' }}>—</span>}
                           {s.salesCount > 1 && <div style={{ fontSize: 11, color: 'var(--muted)' }}>{s.salesCount} чел.</div>}
                         </td>
 
-                        {/* Предоплата — inline edit */}
+                        {/* Предоплата inline */}
                         <td style={{ minWidth: 110 }}>
                           {editPrepId === s.id ? (
                             <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-                              <input
-                                type="number" min="0" value={editPrepVal}
+                              <input type="number" min="0" value={editPrepVal}
                                 onChange={e => setEditPrepVal(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') savePrepayment(s.id); if (e.key === 'Escape') setEditPrepId(null) }}
                                 autoFocus
-                                style={{ width: 80, padding: '3px 6px', fontSize: 13, border: '1.5px solid var(--primary)', borderRadius: 6, outline: 'none' }}
-                              />
+                                style={{ width: 80, padding: '3px 6px', fontSize: 13, border: '1.5px solid var(--primary)', borderRadius: 6, outline: 'none' }} />
                               <button onClick={() => savePrepayment(s.id)} disabled={savingPrep}
                                 style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 5, padding: '3px 7px', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
                                 {savingPrep ? '…' : '✓'}
                               </button>
                               <button onClick={() => setEditPrepId(null)}
-                                style={{ background: '#f1f5f9', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 5px', cursor: 'pointer', fontSize: 12 }}>
-                                ✕
-                              </button>
+                                style={{ background: '#f1f5f9', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 5px', cursor: 'pointer', fontSize: 12 }}>✕</button>
                             </div>
                           ) : (
-                            <div
-                              style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', width: 'fit-content' }}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', width: 'fit-content' }}
                               onClick={() => { setEditPrepId(s.id); setEditPrepVal(String(s.prepayment ?? '')) }}
-                              title="Нажмите чтобы изменить предоплату"
-                            >
-                              <span style={{ fontWeight: 600, color: '#1d4ed8' }}>
-                                {s.prepayment != null ? s.prepayment.toLocaleString('ru-RU') : '—'}
-                              </span>
+                              title="Нажмите чтобы изменить предоплату">
+                              <span style={{ fontWeight: 600, color: '#1d4ed8' }}>{s.prepayment != null ? s.prepayment.toLocaleString('ru-RU') : '—'}</span>
                               <span style={{ fontSize: 11, opacity: 0.35 }}>✏️</span>
                             </div>
                           )}
                         </td>
 
-                        {/* Долг — inline edit */}
+                        {/* Долг inline */}
                         <td style={{ minWidth: 110 }}>
                           {editDebtId === s.id ? (
                             <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-                              <input
-                                type="number" min="0" value={editDebtVal}
+                              <input type="number" min="0" value={editDebtVal}
                                 onChange={e => setEditDebtVal(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') saveDebt(s.id); if (e.key === 'Escape') setEditDebtId(null) }}
                                 autoFocus
-                                style={{ width: 80, padding: '3px 6px', fontSize: 13, border: '1.5px solid #f97316', borderRadius: 6, outline: 'none' }}
-                              />
+                                style={{ width: 80, padding: '3px 6px', fontSize: 13, border: '1.5px solid #f97316', borderRadius: 6, outline: 'none' }} />
                               <button onClick={() => saveDebt(s.id)} disabled={savingDebt}
                                 style={{ background: '#f97316', color: '#fff', border: 'none', borderRadius: 5, padding: '3px 7px', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
                                 {savingDebt ? '…' : '✓'}
                               </button>
                               <button onClick={() => setEditDebtId(null)}
-                                style={{ background: '#f1f5f9', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 5px', cursor: 'pointer', fontSize: 12 }}>
-                                ✕
-                              </button>
+                                style={{ background: '#f1f5f9', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 5px', cursor: 'pointer', fontSize: 12 }}>✕</button>
                             </div>
                           ) : (
-                            <div
-                              style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', width: 'fit-content' }}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', width: 'fit-content' }}
                               onClick={() => { setEditDebtId(s.id); setEditDebtVal(String(s.debt ?? '')) }}
-                              title="Нажмите чтобы изменить долг"
-                            >
+                              title="Нажмите чтобы изменить долг">
                               <span style={{ fontWeight: 700, color: s.debt > 0 ? '#ea580c' : s.debt === 0 ? '#16a34a' : 'var(--muted)' }}>
                                 {s.debt != null ? s.debt.toLocaleString('ru-RU') : '—'}
                               </span>
@@ -708,67 +686,34 @@ export default function Dashboard() {
                           )}
                         </td>
 
-                        {/* Срок оплаты */}
                         <td style={{ whiteSpace: 'nowrap' }}>
                           {s.dueDate ? (
                             <div>
-                              <div style={{ fontWeight: 600, fontSize: 12, color: isOverdue ? '#dc2626' : isDueSoon ? '#f97316' : 'var(--text)' }}>
-                                {formatDate(s.dueDate)}
-                              </div>
+                              <div style={{ fontWeight: 600, fontSize: 12, color: isOverdue ? '#dc2626' : isDueSoon ? '#f97316' : 'var(--text)' }}>{formatDate(s.dueDate)}</div>
                               {isOverdue && <div style={{ fontSize: 10, color: '#dc2626' }}>просрочен {Math.abs(daysLeft)} дн.</div>}
                               {isDueSoon && <div style={{ fontSize: 10, color: '#f97316' }}>через {daysLeft} дн.</div>}
                             </div>
                           ) : <span style={{ color: 'var(--muted)' }}>—</span>}
                         </td>
 
-                        {/* Способ оплаты */}
                         <td>
                           {s.paymentMethod
-                            ? <span style={{ fontSize: 11, background: '#f0f4ff', borderRadius: 6, padding: '2px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                {PAYMENT_LABELS[s.paymentMethod] || s.paymentMethod}
-                              </span>
+                            ? <span style={{ fontSize: 11, background: '#f0f4ff', borderRadius: 6, padding: '2px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>{PAYMENT_LABELS[s.paymentMethod] || s.paymentMethod}</span>
                             : <span style={{ color: 'var(--muted)' }}>—</span>}
                         </td>
 
-                        {/* Менеджер */}
                         <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)', fontSize: 12 }}>{s.manager || '—'}</td>
 
-                        {/* Действия */}
                         <td>
-                          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                            {editingId === s.id ? (
-                              <>
-                                <input
-                                  type="number" min="1" value={editVal}
-                                  onChange={e => setEditVal(e.target.value)}
-                                  onKeyDown={e => { if (e.key === 'Enter') saveEdit(s.id); if (e.key === 'Escape') setEditingId(null) }}
-                                  autoFocus
-                                  style={{ width: 48, padding: '3px 5px', fontSize: 13, border: '1.5px solid var(--primary)', borderRadius: 6, outline: 'none' }}
-                                />
-                                <button onClick={() => saveEdit(s.id)} disabled={saving}
-                                  style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 5, padding: '3px 7px', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>
-                                  {saving ? '…' : '✓'}
-                                </button>
-                                <button onClick={() => setEditingId(null)}
-                                  style={{ background: '#f1f5f9', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 5px', cursor: 'pointer', fontSize: 12 }}>
-                                  ✕
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => { setEditingId(s.id); setEditVal(String(s.salesCount)) }}
-                                  style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}
-                                  title="Изменить кол-во">
-                                  👥 {s.salesCount}
-                                </button>
-                                <button onClick={() => setDeletingId(s.id)}
-                                  style={{ background: 'none', border: '1px solid rgba(255,59,48,0.3)', borderRadius: 6, padding: '3px 7px', cursor: 'pointer', color: '#ef4444', fontSize: 13 }}
-                                  title="Удалить">
-                                  🗑
-                                </button>
-                              </>
-                            )}
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button onClick={() => openEditModal(s)}
+                              style={{ background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#4338ca', whiteSpace: 'nowrap' }}>
+                              ✏️ Изменить
+                            </button>
+                            <button onClick={() => setDeletingId(s.id)}
+                              style={{ background: 'none', border: '1px solid rgba(255,59,48,0.3)', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', color: '#ef4444', fontSize: 13 }}>
+                              🗑
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -787,7 +732,7 @@ export default function Dashboard() {
           <div className="overlay" onClick={() => setDeletingId(null)}>
             <div className="dialog" onClick={e => e.stopPropagation()}>
               <h3>Удалить запись?</h3>
-              <p>Договор <strong>{s?.contractNumber}</strong> ({s?.manager}) будет удалён из Google Sheets. Это действие нельзя отменить.</p>
+              <p>Договор <strong>{s?.contractNumber}</strong> ({s?.manager}) будет удалён из Google Sheets.</p>
               <div className="dialog-btns">
                 <button className="btn-cancel" onClick={() => setDeletingId(null)}>Отмена</button>
                 <button className="btn-confirm" onClick={() => confirmDelete(deletingId)}>Удалить</button>
@@ -796,6 +741,133 @@ export default function Dashboard() {
           </div>
         )
       })()}
+
+      {/* ── Модальное окно редактирования заявки ── */}
+      {editModalSale && (
+        <div className="overlay" onClick={() => !savingModal && setEditModalSale(null)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: '#fff', borderRadius: 24, padding: '28px 28px 24px',
+            maxWidth: 640, width: '95%', maxHeight: '92vh', overflowY: 'auto',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.25)',
+            animation: 'slideDown 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          }}>
+            {/* Заголовок */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>✏️ Редактировать заявку</div>
+              <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>
+                {editModalSale.contractNumber} · {editModalSale.clientName || '—'}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+
+              <div><label style={LBL}>Клиент</label>
+                <input className="input" style={INP} value={editModalData.clientName}
+                  onChange={e => setEditModalData(d => ({ ...d, clientName: e.target.value }))} /></div>
+
+              <div><label style={LBL}>Телефон</label>
+                <input className="input" style={INP} value={editModalData.phone}
+                  onChange={e => setEditModalData(d => ({ ...d, phone: e.target.value }))} /></div>
+
+              <div><label style={LBL}>✈️ Направление</label>
+                <input className="input" style={INP} value={editModalData.direction}
+                  onChange={e => setEditModalData(d => ({ ...d, direction: e.target.value }))} /></div>
+
+              <div><label style={LBL}>🏨 Отель</label>
+                <input className="input" style={INP} value={editModalData.hotel}
+                  onChange={e => setEditModalData(d => ({ ...d, hotel: e.target.value }))} /></div>
+
+              <div><label style={LBL}>📄 Номер договора</label>
+                <input className="input" style={INP} value={editModalData.contractNumber}
+                  onChange={e => setEditModalData(d => ({ ...d, contractNumber: e.target.value }))} /></div>
+
+              <div><label style={LBL}>👤 Менеджер</label>
+                <input className="input" style={INP} value={editModalData.manager}
+                  onChange={e => setEditModalData(d => ({ ...d, manager: e.target.value }))} /></div>
+
+              <div><label style={LBL}>📅 Дата брони</label>
+                <input className="input" type="date" style={INP} value={editModalData.bookingDate}
+                  onChange={e => setEditModalData(d => ({ ...d, bookingDate: e.target.value }))} /></div>
+
+              <div><label style={LBL}>👥 Туристов</label>
+                <input className="input" type="number" min="1" style={INP} value={editModalData.salesCount}
+                  onChange={e => setEditModalData(d => ({ ...d, salesCount: e.target.value }))} /></div>
+
+              <div><label style={LBL}>✈️ Дата вылета</label>
+                <input className="input" type="date" style={INP} value={editModalData.departureDate}
+                  onChange={e => setEditModalData(d => ({ ...d, departureDate: e.target.value }))} /></div>
+
+              <div><label style={LBL}>🛬 Дата прилёта</label>
+                <input className="input" type="date" style={INP} value={editModalData.arrivalDate}
+                  onChange={e => setEditModalData(d => ({ ...d, arrivalDate: e.target.value }))} /></div>
+
+              <div>
+                <label style={LBL}>💰 Сумма</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input className="input" type="number" min="0" style={{ ...INP, flex: 1 }} value={editModalData.amount}
+                    onChange={e => setEditModalData(d => ({ ...d, amount: e.target.value }))} />
+                  <select className="select" style={{ ...INP, width: 84 }} value={editModalData.currency}
+                    onChange={e => setEditModalData(d => ({ ...d, currency: e.target.value }))}>
+                    {['USD','EUR','UZS'].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div><label style={LBL}>💳 Предоплата</label>
+                <input className="input" type="number" min="0" style={INP} value={editModalData.prepayment}
+                  onChange={e => setEditModalData(d => ({ ...d, prepayment: e.target.value }))} /></div>
+
+              <div><label style={LBL}>🔴 Долг</label>
+                <input className="input" type="number" min="0" style={INP} value={editModalData.debt}
+                  onChange={e => setEditModalData(d => ({ ...d, debt: e.target.value }))} /></div>
+
+              <div><label style={LBL}>📅 Срок оплаты остатка</label>
+                <input className="input" type="date" style={INP} value={editModalData.dueDate}
+                  onChange={e => setEditModalData(d => ({ ...d, dueDate: e.target.value }))} /></div>
+
+              <div><label style={LBL}>💵 Комиссия ($)</label>
+                <input className="input" type="number" min="0" style={INP} value={editModalData.commission}
+                  onChange={e => setEditModalData(d => ({ ...d, commission: e.target.value }))} /></div>
+
+              <div><label style={LBL}>🏷 Скидка ($)</label>
+                <input className="input" type="number" min="0" style={INP} value={editModalData.discount}
+                  onChange={e => setEditModalData(d => ({ ...d, discount: e.target.value }))} /></div>
+            </div>
+
+            {/* Способ оплаты */}
+            <div style={{ marginTop: 14 }}>
+              <label style={LBL}>💳 Способ оплаты</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 6 }}>
+                {Object.entries(PAYMENT_LABELS).map(([id, label]) => (
+                  <button key={id} type="button"
+                    onClick={() => setEditModalData(d => ({ ...d, paymentMethod: d.paymentMethod === id ? '' : id }))}
+                    style={{
+                      padding: '8px 4px', borderRadius: 10, border: '1.5px solid',
+                      borderColor: editModalData.paymentMethod === id ? 'var(--primary)' : 'var(--border)',
+                      background: editModalData.paymentMethod === id ? 'var(--primary)' : '#f8fafc',
+                      color: editModalData.paymentMethod === id ? '#fff' : 'var(--text)',
+                      cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
+                      transition: 'all .15s',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Кнопки */}
+            <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+              <button onClick={() => setEditModalSale(null)}
+                style={{ flex: 1, padding: '13px', background: 'rgba(0,0,0,0.05)', border: 'none', borderRadius: 980, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Отмена
+              </button>
+              <button onClick={saveModal} disabled={savingModal} className="btn" style={{ flex: 2 }}>
+                {savingModal ? '⏳ Сохранение...' : '💾 Сохранить изменения'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
