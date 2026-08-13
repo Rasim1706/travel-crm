@@ -160,9 +160,11 @@ function sessionSpreadsheetId(req) {
 
 app.post('/api/register', async (req, res) => {
   try {
-    const { agencyName, login, password, email, existingSheetUrl, avatar = '🏢' } = req.body;
+    const { agencyName, login, password, email, sheetUrl, avatar = '🏢' } = req.body;
     if (!agencyName?.trim() || !login?.trim() || !password)
       return res.json({ success: false, error: 'Заполните все поля' });
+    if (!sheetUrl?.trim())
+      return res.json({ success: false, error: 'Вставьте ссылку на вашу Google Таблицу' });
 
     const sheets = await getSheets();
     await ensureSheet(sheets, MASTER_SPREADSHEET_ID, AGENCIES_SHEET, AGENCIES_HEADERS);
@@ -175,38 +177,27 @@ app.post('/api/register', async (req, res) => {
 
     const agencyId = 'ag_' + Date.now().toString(36);
     const now = new Date().toISOString();
-    let spreadsheetId;
-    let spreadsheetUrl;
 
-    if (existingSheetUrl?.trim()) {
-      // Восстановление: используем существующую таблицу
-      const match = existingSheetUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-      if (!match) return res.json({ success: false, error: 'Неверная ссылка на таблицу Google Sheets' });
-      spreadsheetId = match[1];
-      spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-      // Проверяем доступность
-      try {
-        await sheets.spreadsheets.get({ spreadsheetId });
-      } catch {
-        return res.json({
-          success: false,
-          error: `Таблица недоступна. Откройте доступ (редактор) для: travel-crm-bot@travel-crm-497007.iam.gserviceaccount.com`,
-        });
-      }
-    } else {
-      // Создаём новую таблицу
-      const created = await sheets.spreadsheets.create({
-        requestBody: { properties: { title: `${agencyName.trim()} — CRM` } },
+    // Извлекаем spreadsheetId из ссылки
+    const match = sheetUrl.trim().match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (!match)
+      return res.json({ success: false, error: 'Неверная ссылка. Скопируйте полную ссылку из браузера' });
+
+    const spreadsheetId  = match[1];
+    const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+
+    // Проверяем что таблица доступна (сервисный аккаунт имеет доступ)
+    try {
+      await sheets.spreadsheets.get({ spreadsheetId });
+    } catch {
+      return res.json({
+        success: false,
+        error: 'Таблица недоступна. Убедитесь что вы открыли доступ (Редактор) для: travel-crm-bot@travel-crm-497007.iam.gserviceaccount.com',
       });
-      spreadsheetId = created.data.spreadsheetId;
-      spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
-
-      // Настраиваем шаблон
-      await setupAgencySheet(sheets, spreadsheetId, agencyName.trim());
-
-      // Примечание: автошаринг на email требует Drive API.
-      // Пользователь может вручную открыть таблицу через ссылку и добавить доступ.
     }
+
+    // Настраиваем структуру листов в таблице агентства
+    await setupAgencySheet(sheets, spreadsheetId, agencyName.trim());
 
     // Записываем агентство в мастер-таблицу
     await sheets.spreadsheets.values.append({
