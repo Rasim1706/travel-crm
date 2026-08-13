@@ -61,12 +61,16 @@ function ListManager({ icon, items, onAdd, onDelete, placeholder }) {
 }
 
 function AccountsManager({ show }) {
-  const [accounts, setAccounts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState({ login: '', password: '', manager: '', role: 'manager' })
-  const [adding, setAdding] = useState(false)
+  const [accounts,    setAccounts]    = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [form,        setForm]        = useState({ login: '', password: '', manager: '', role: 'manager' })
+  const [adding,      setAdding]      = useState(false)
   const [changingPwd, setChangingPwd] = useState(null)
-  const [newPwd, setNewPwd] = useState('')
+  const [newPwd,      setNewPwd]      = useState('')
+  const [editingAcc,  setEditingAcc]  = useState(null)   // login being edited
+  const [editForm,    setEditForm]    = useState({})
+  const [saving,      setSaving]      = useState(false)
+  const [delConfirm,  setDelConfirm]  = useState(null)   // login pending delete
 
   useEffect(() => {
     api.getAccounts()
@@ -91,7 +95,7 @@ function AccountsManager({ show }) {
 
   async function handleDelete(login) {
     const r = await api.deleteAccount(login)
-    if (r.success) { setAccounts(r.accounts); show('✅ Аккаунт удалён') }
+    if (r.success) { setAccounts(r.accounts); show('✅ Аккаунт удалён'); setDelConfirm(null) }
     else show('❌ ' + r.error, 'error')
   }
 
@@ -100,6 +104,31 @@ function AccountsManager({ show }) {
     const r = await api.changePassword(login, newPwd.trim())
     if (r.success) { show('✅ Пароль изменён'); setChangingPwd(null); setNewPwd('') }
     else show('❌ ' + r.error, 'error')
+  }
+
+  function startEdit(acc) {
+    setEditingAcc(acc.login)
+    setEditForm({ newLogin: acc.login, manager: acc.manager, role: acc.role })
+    setChangingPwd(null)
+  }
+
+  async function handleSaveEdit(origLogin) {
+    if (!editForm.newLogin.trim() || !editForm.manager.trim())
+      return show('❌ Логин и имя обязательны', 'error')
+    setSaving(true)
+    const r = await api.updateAccount(origLogin, {
+      newLogin: editForm.newLogin.trim() !== origLogin ? editForm.newLogin.trim() : undefined,
+      manager: editForm.manager,
+      role: editForm.role,
+    })
+    if (r.success) {
+      setAccounts(r.accounts)
+      setEditingAcc(null)
+      show('✅ Данные обновлены')
+    } else {
+      show('❌ ' + r.error, 'error')
+    }
+    setSaving(false)
   }
 
   if (loading) return <div className="loader">⏳ Загрузка...</div>
@@ -134,37 +163,110 @@ function AccountsManager({ show }) {
           {accounts.map(acc => (
             <div key={acc.login} style={{
               background: '#fff', borderRadius: 14, padding: '14px 16px',
-              border: '1.5px solid var(--border)',
+              border: `1.5px solid ${editingAcc === acc.login ? 'var(--primary)' : 'var(--border)'}`,
+              transition: 'border-color .2s',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              {editingAcc === acc.login ? (
+                /* ── Режим редактирования ── */
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 15 }}>{acc.login}</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
-                    {acc.role === 'admin' ? '👑 Администратор' : '👤 Менеджер'} · {acc.manager}
+                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--primary)', marginBottom: 12 }}>
+                    ✏️ Редактирование аккаунта
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 5, textTransform: 'uppercase' }}>Логин</label>
+                      <input className="input" value={editForm.newLogin}
+                        onChange={e => setEditForm(f => ({ ...f, newLogin: e.target.value }))}
+                        style={{ marginBottom: 0 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 5, textTransform: 'uppercase' }}>Имя менеджера</label>
+                      <input className="input" placeholder="Отображается в записях" value={editForm.manager}
+                        onChange={e => setEditForm(f => ({ ...f, manager: e.target.value }))}
+                        style={{ marginBottom: 0 }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 5, textTransform: 'uppercase' }}>Роль</label>
+                      <select className="input" value={editForm.role}
+                        onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}
+                        style={{ marginBottom: 0 }}>
+                        <option value="manager">👤 Менеджер</option>
+                        <option value="admin">👑 Администратор</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      <button onClick={() => setEditingAcc(null)}
+                        style={{ flex: 1, padding: '11px', background: '#f1f5f9', border: 'none', borderRadius: 980, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Отмена
+                      </button>
+                      <button onClick={() => handleSaveEdit(acc.login)} disabled={saving}
+                        className="btn" style={{ flex: 2, padding: '11px' }}>
+                        {saving ? '⏳ Сохранение...' : '💾 Сохранить'}
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    onClick={() => { setChangingPwd(changingPwd === acc.login ? null : acc.login); setNewPwd('') }}
-                    style={{ background: '#e0e7ff', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#3730a3' }}
-                  >🔑 Пароль</button>
-                  <button
-                    onClick={() => handleDelete(acc.login)}
-                    style={{ background: '#fee2e2', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#dc2626' }}
-                  >✕ Удалить</button>
-                </div>
-              </div>
-              {changingPwd === acc.login && (
-                <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-                  <input className="input" type="password" placeholder="Новый пароль" value={newPwd}
-                    onChange={e => setNewPwd(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleChangePassword(acc.login)}
-                    style={{ marginBottom: 0, flex: 1 }} />
-                  <button onClick={() => handleChangePassword(acc.login)}
-                    style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '0 16px', cursor: 'pointer', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
-                    Сохранить
-                  </button>
-                </div>
+              ) : (
+                /* ── Режим просмотра ── */
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 15 }}>{acc.login}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
+                        {acc.role === 'admin' ? '👑 Администратор' : '👤 Менеджер'} · {acc.manager}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button onClick={() => startEdit(acc)}
+                        style={{ background: '#f0f4ff', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#4338ca' }}>
+                        ✏️ Изменить
+                      </button>
+                      <button
+                        onClick={() => { setChangingPwd(changingPwd === acc.login ? null : acc.login); setNewPwd('') }}
+                        style={{ background: '#e0e7ff', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#3730a3' }}>
+                        🔑 Пароль
+                      </button>
+                      <button onClick={() => setDelConfirm(acc.login)}
+                        style={{ background: '#fee2e2', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#dc2626' }}>
+                        🗑 Удалить
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Смена пароля */}
+                  {changingPwd === acc.login && (
+                    <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                      <input className="input" type="password" placeholder="Новый пароль" value={newPwd}
+                        onChange={e => setNewPwd(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleChangePassword(acc.login)}
+                        autoFocus
+                        style={{ marginBottom: 0, flex: 1 }} />
+                      <button onClick={() => handleChangePassword(acc.login)}
+                        style={{ background: 'var(--primary)', color: '#fff', border: 'none', borderRadius: 10, padding: '0 16px', cursor: 'pointer', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                        Сохранить
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Подтверждение удаления */}
+                  {delConfirm === acc.login && (
+                    <div style={{ marginTop: 10, background: '#fef2f2', borderRadius: 10, padding: '12px 14px', border: '1px solid #fca5a5' }}>
+                      <div style={{ fontSize: 13, color: '#dc2626', fontWeight: 600, marginBottom: 10 }}>
+                        Удалить аккаунт «{acc.login}»? Действие необратимо.
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => setDelConfirm(null)}
+                          style={{ flex: 1, padding: '8px', background: '#f1f5f9', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Отмена
+                        </button>
+                        <button onClick={() => handleDelete(acc.login)}
+                          style={{ flex: 1, padding: '8px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Удалить
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ))}

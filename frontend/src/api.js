@@ -23,6 +23,7 @@ export const api = {
   addAccount:     (data)                    => call('/api/accounts', { method: 'POST', body: JSON.stringify(data) }),
   deleteAccount:  (login)                   => call(`/api/accounts/${encodeURIComponent(login)}`, { method: 'DELETE' }),
   changePassword: (login, password)         => call(`/api/accounts/${encodeURIComponent(login)}/password`, { method: 'PUT', body: JSON.stringify({ password }) }),
+  updateAccount:  (login, data)             => call(`/api/accounts/${encodeURIComponent(login)}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Managers (read-only — names come from Accounts sheet)
   getManagers: () => call('/api/managers'),

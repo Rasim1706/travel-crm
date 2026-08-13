@@ -321,6 +321,43 @@ app.delete('/api/accounts/:login', async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+app.put('/api/accounts/:login', async (req, res) => {
+  if (req.session?.role !== 'admin') return res.json({ success: false, error: 'Доступ запрещён' });
+  const agencyId   = req.session.agencyId || 'default';
+  const loginParam = decodeURIComponent(req.params.login);
+  try {
+    const { manager, role, newLogin } = req.body;
+    const sheets = await getSheets();
+    const r   = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const rows = r.data.values || [];
+    const idx  = rows.findIndex(row => row[0] === loginParam && (row[4] || 'default') === agencyId);
+    if (idx < 0) return res.json({ success: false, error: 'Аккаунт не найден' });
+
+    // Проверяем уникальность нового логина (если меняется)
+    if (newLogin && newLogin.trim() !== loginParam) {
+      if (rows.some(row => row[0] === newLogin.trim()))
+        return res.json({ success: false, error: 'Логин уже занят' });
+    }
+
+    const rowNum = idx + 2;
+    const batchData = [];
+    if (newLogin && newLogin.trim()) batchData.push({ range: `${ACCOUNTS_SHEET}!A${rowNum}`, values: [[newLogin.trim()]] });
+    if (manager !== undefined)       batchData.push({ range: `${ACCOUNTS_SHEET}!C${rowNum}`, values: [[manager]] });
+    if (role    !== undefined)       batchData.push({ range: `${ACCOUNTS_SHEET}!D${rowNum}`, values: [[role]] });
+
+    if (batchData.length > 0) {
+      await sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId: MASTER_SPREADSHEET_ID,
+        requestBody: { valueInputOption: 'RAW', data: batchData },
+      });
+    }
+
+    const updated = await sheets.spreadsheets.values.get({ spreadsheetId: MASTER_SPREADSHEET_ID, range: `${ACCOUNTS_SHEET}!A2:E` });
+    const agRows  = (updated.data.values || []).filter(row => (row[4] || 'default') === agencyId);
+    res.json({ success: true, accounts: agRows.map(row => ({ login: row[0], manager: row[2], role: row[3] })) });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
 app.put('/api/accounts/:login/password', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
   const login    = decodeURIComponent(req.params.login);
