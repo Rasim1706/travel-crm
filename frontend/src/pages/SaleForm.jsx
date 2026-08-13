@@ -79,9 +79,11 @@ export default function SaleForm({ session }) {
   const [source,     setSource]     = useState('')
 
   // Шаг 2 — Тур
-  const [direction,    setDirection]    = useState('')
-  const [hotel,        setHotel]        = useState('')
-  const [bookingDate,  setBookingDate]  = useState(today())
+  const [direction,     setDirection]     = useState('')
+  const [hotel,         setHotel]         = useState('')
+  const [bookingDate,   setBookingDate]   = useState(today())
+  const [departureDate, setDepartureDate] = useState('')
+  const [arrivalDate,   setArrivalDate]   = useState('')
 
   // Шаг 3 — Договор (manager locked for managers)
   const [manager,        setManager]        = useState(isManager ? session.name : '')
@@ -96,6 +98,7 @@ export default function SaleForm({ session }) {
   const [prepayment,   setPrepayment]   = useState('')
   const [commission,   setCommission]   = useState('')
   const [discount,     setDiscount]     = useState('')
+  const [dueDate,      setDueDate]      = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
   const [paymentUZS,   setPaymentUZS]   = useState('')
   const [paymentUSD,   setPaymentUSD]   = useState('')
@@ -152,9 +155,12 @@ export default function SaleForm({ session }) {
         prepayment: prepayment || undefined,
         commission: commission || undefined,
         discount: discount || undefined,
+        dueDate: dueDate || undefined,
         paymentMethod: paymentMethod || undefined,
         paymentUZS: paymentUZS || undefined,
         paymentUSD: paymentUSD || undefined,
+        departureDate: departureDate || undefined,
+        arrivalDate: arrivalDate || undefined,
       })
       if (res.success) {
         show('✅ Запись сохранена!')
@@ -164,7 +170,8 @@ export default function SaleForm({ session }) {
         if (!isManager) setManager('')
         setContractNumber(''); setSalesCount(1)
         setAmount(''); setRate(''); setNetto(''); setPrepayment('')
-        setCommission(''); setDiscount('')
+        setCommission(''); setDiscount(''); setDueDate('')
+        setDepartureDate(''); setArrivalDate('')
         setPaymentMethod(''); setPaymentUZS(''); setPaymentUSD('')
       } else {
         show('❌ ' + res.error, 'error')
@@ -270,6 +277,19 @@ export default function SaleForm({ session }) {
             <input className="input" type="date"
               value={bookingDate} onChange={e => setBookingDate(e.target.value)} />
           </div>
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="label">✈️ Дата вылета</label>
+              <input className="input" type="date"
+                value={departureDate} onChange={e => setDepartureDate(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="label">🛬 Дата прилёта</label>
+              <input className="input" type="date"
+                value={arrivalDate} onChange={e => setArrivalDate(e.target.value)} />
+            </div>
+          </div>
         </div>
       )}
 
@@ -361,6 +381,13 @@ export default function SaleForm({ session }) {
             <label className="label">Предоплата клиента ({currSymbol})</label>
             <input className="input" type="number" min="0" placeholder="0"
               value={prepayment} onChange={e => setPrepayment(e.target.value)} />
+          </div>
+
+          {/* Срок оплаты остатка */}
+          <div className="form-group">
+            <label className="label">📅 Срок оплаты остатка</label>
+            <input className="input" type="date"
+              value={dueDate} onChange={e => setDueDate(e.target.value)} />
           </div>
 
           {/* Долг клиента = Сумма − Предоплата */}

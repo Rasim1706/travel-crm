@@ -30,7 +30,7 @@ export const api = {
   // Sales
   getSales:    ()                  => call('/api/sales'),
   addSale:     (data)              => call('/api/sales', { method: 'POST', body: JSON.stringify(data) }),
-  updateSale:  (id, salesCount)    => call(`/api/sales/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify({ salesCount }) }),
+  updateSale:  (id, data)          => call(`/api/sales/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSale:  (id)                => call(`/api/sales/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // Reference lists

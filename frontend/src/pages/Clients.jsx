@@ -69,16 +69,17 @@ export default function Clients() {
       if (!map[key]) {
         map[key] = {
           phone,
-          names:      [],          // все имена под этим ключом
+          names:      [],
           contracts:  0,
           totalSales: 0,
+          totalDebt:  0,
           firstDate:  null,
           lastDate:   null,
           directions: {},
           hotels:     {},
           managers:   {},
           records:    [],
-          noPhone:    !phone,      // флаг — нет телефона
+          noPhone:    !phone,
         }
       }
       const c = map[key]
@@ -103,11 +104,13 @@ export default function Clients() {
       if (s.manager)   c.managers[s.manager]     = (c.managers[s.manager]     || 0) + 1
 
       c.records.push(s)
+
+      // Долги
+      if (s.debt && s.debt > 0) c.totalDebt = (c.totalDebt || 0) + s.debt
     })
 
     return Object.values(map).map(c => ({
       ...c,
-      // Отображаемое имя — последнее встреченное, или «Без имени»
       name: c.names[c.names.length - 1] || '—',
     }))
   }, [sales])
@@ -226,6 +229,11 @@ export default function Clients() {
                           </span>
                         )}
                         <LtvBadge count={c.contracts} />
+                        {c.totalDebt > 0 && (
+                          <span style={{ fontSize: 11, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 8, padding: '1px 7px', fontWeight: 700 }}>
+                            🔴 Долг: {c.totalDebt.toLocaleString('ru-RU')}
+                          </span>
+                        )}
                         {c.noPhone && (
                           <span style={{ fontSize: 10, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a', borderRadius: 8, padding: '1px 6px' }}>
                             без телефона
@@ -336,6 +344,16 @@ export default function Clients() {
                                   <div style={{ fontSize: 12, fontWeight: 600 }}>{formatDate(r.bookingDate)}</div>
                                 )}
                                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>{r.manager}</div>
+                                {r.prepayment != null && (
+                                  <div style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 600, marginTop: 2 }}>
+                                    💳 {r.prepayment.toLocaleString('ru-RU')}
+                                  </div>
+                                )}
+                                {r.debt != null && r.debt > 0 && (
+                                  <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 700, background: '#fef2f2', borderRadius: 6, padding: '1px 6px', marginTop: 2 }}>
+                                    🔴 {r.debt.toLocaleString('ru-RU')}
+                                  </div>
+                                )}
                               </div>
                               <span className="badge">{r.salesCount}</span>
                             </div>

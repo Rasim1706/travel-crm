@@ -32,6 +32,7 @@ const SALE_HEADERS = [
   'Сумма','Валюта','Комиссия ($)','Скидка ($)','Остаток ($)',
   'Курс','Нетто','Предоплата','Долг клиента',
   'Способ оплаты','Сумма UZS','Сумма USD ($)',
+  'Дата вылета','Дата прилета','Срок оплаты остатка',
 ];
 
 function currentMonthSheet() {
@@ -511,7 +512,7 @@ app.post('/api/sales', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
   const spreadsheetId = sessionSpreadsheetId(req);
   try {
-    const { contractNumber, salesCount, bookingDate, clientName, direction, hotel, phone, source, amount, currency, commission, discount, rate, netto, prepayment, paymentMethod, paymentUZS, paymentUSD } = req.body;
+    const { contractNumber, salesCount, bookingDate, clientName, direction, hotel, phone, source, amount, currency, commission, discount, rate, netto, prepayment, paymentMethod, paymentUZS, paymentUSD, departureDate, arrivalDate, dueDate } = req.body;
     const manager = req.session.role === 'manager' ? req.session.name : (req.body.manager || '');
     if (!contractNumber || !manager || !salesCount)
       return res.json({ success: false, error: 'Заполните обязательные поля' });
@@ -520,7 +521,7 @@ app.post('/api/sales', async (req, res) => {
     await ensureSheet(sheets, spreadsheetId, sheetName, SALE_HEADERS);
     const debt = (amount && prepayment) ? Math.round((Number(amount) - Number(prepayment)) * 100) / 100 : '';
     await sheets.spreadsheets.values.append({
-      spreadsheetId, range: `${sheetName}!A:V`, valueInputOption: 'RAW',
+      spreadsheetId, range: `${sheetName}!A:Y`, valueInputOption: 'RAW',
       requestBody: { values: [[
         new Date().toISOString(), contractNumber.trim(), manager, Number(salesCount),
         bookingDate || '', clientName || '', direction || '', hotel || '', phone || '', source || '',
@@ -532,6 +533,7 @@ app.post('/api/sales', async (req, res) => {
         paymentMethod || '',
         paymentUZS ? Number(paymentUZS) : '',
         paymentUSD ? Number(paymentUSD) : '',
+        departureDate || '', arrivalDate || '', dueDate || '',
       ]] },
     });
     res.json({ success: true });
@@ -547,7 +549,7 @@ app.get('/api/sales', async (req, res) => {
     const titles = meta.data.sheets.map(s => s.properties.title).filter(isSalesSheet);
     const allRows = [];
     for (const title of titles) {
-      const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${title}!A2:V` });
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${title}!A2:Y` });
       (r.data.values || []).forEach((row, i) => {
         allRows.push({
           id            : `${title}|${i + 2}`,
@@ -573,6 +575,9 @@ app.get('/api/sales', async (req, res) => {
           paymentMethod : row[19] || '',
           paymentUZS    : row[20] ? Number(row[20]) : null,
           paymentUSD    : row[21] ? Number(row[21]) : null,
+          departureDate : row[22] || '',
+          arrivalDate   : row[23] || '',
+          dueDate       : row[24] || '',
         });
       });
     }
@@ -593,10 +598,17 @@ app.put('/api/sales/:id', async (req, res) => {
     const sheetTitle = rawId.slice(0, lastPipe);
     const rowIndex   = parseInt(rawId.slice(lastPipe + 1));
     const sheets = await getSheets();
-    await sheets.spreadsheets.values.update({
-      spreadsheetId, range: `${sheetTitle}!D${rowIndex}`,
-      valueInputOption: 'RAW', requestBody: { values: [[Number(req.body.salesCount)]] },
-    });
+    // Поддерживаем обновление нескольких полей
+    const UPDATABLE = { salesCount: 'D', prepayment: 'R', debt: 'S' };
+    for (const [field, col] of Object.entries(UPDATABLE)) {
+      if (req.body[field] !== undefined) {
+        const val = req.body[field] === '' ? '' : Number(req.body[field]);
+        await sheets.spreadsheets.values.update({
+          spreadsheetId, range: `${sheetTitle}!${col}${rowIndex}`,
+          valueInputOption: 'RAW', requestBody: { values: [[val]] },
+        });
+      }
+    }
     res.json({ success: true });
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
