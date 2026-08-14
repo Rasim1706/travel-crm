@@ -14,6 +14,17 @@ const PAYMENT_LABELS = {
   mixed:        '🔀 Смешанная',
 }
 
+function formatPayment(method) {
+  if (!method) return null
+  if (method.startsWith('mixed:')) {
+    const [, m1, m2] = method.split(':')
+    const l1 = PAYMENT_LABELS[m1] || m1
+    const l2 = PAYMENT_LABELS[m2] || m2
+    return `🔀 ${l1} + ${l2}`
+  }
+  return PAYMENT_LABELS[method] || method
+}
+
 function DonutChart({ data }) {
   const [hovered, setHovered] = useState(null)
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
@@ -697,8 +708,8 @@ export default function Dashboard() {
                         </td>
 
                         <td>
-                          {s.paymentMethod
-                            ? <span style={{ fontSize: 11, background: '#f0f4ff', borderRadius: 6, padding: '2px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>{PAYMENT_LABELS[s.paymentMethod] || s.paymentMethod}</span>
+                          {formatPayment(s.paymentMethod)
+                            ? <span style={{ fontSize: 11, background: '#f0f4ff', borderRadius: 6, padding: '2px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>{formatPayment(s.paymentMethod)}</span>
                             : <span style={{ color: 'var(--muted)' }}>—</span>}
                         </td>
 
@@ -838,20 +849,24 @@ export default function Dashboard() {
             <div style={{ marginTop: 14 }}>
               <label style={LBL}>💳 Способ оплаты</label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 6 }}>
-                {Object.entries(PAYMENT_LABELS).map(([id, label]) => (
-                  <button key={id} type="button"
-                    onClick={() => setEditModalData(d => ({ ...d, paymentMethod: d.paymentMethod === id ? '' : id }))}
-                    style={{
-                      padding: '8px 4px', borderRadius: 10, border: '1.5px solid',
-                      borderColor: editModalData.paymentMethod === id ? 'var(--primary)' : 'var(--border)',
-                      background: editModalData.paymentMethod === id ? 'var(--primary)' : '#f8fafc',
-                      color: editModalData.paymentMethod === id ? '#fff' : 'var(--text)',
-                      cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
-                      transition: 'all .15s',
-                    }}>
-                    {label}
-                  </button>
-                ))}
+                {Object.entries(PAYMENT_LABELS).map(([id, label]) => {
+                  const curBase = (editModalData.paymentMethod || '').split(':')[0]
+                  const isActive = curBase === id
+                  return (
+                    <button key={id} type="button"
+                      onClick={() => setEditModalData(d => ({ ...d, paymentMethod: isActive ? '' : id }))}
+                      style={{
+                        padding: '8px 4px', borderRadius: 10, border: '1.5px solid',
+                        borderColor: isActive ? 'var(--primary)' : 'var(--border)',
+                        background: isActive ? 'var(--primary)' : '#f8fafc',
+                        color: isActive ? '#fff' : 'var(--text)',
+                        cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 600,
+                        transition: 'all .15s',
+                      }}>
+                      {label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 

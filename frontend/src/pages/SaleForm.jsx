@@ -17,6 +17,19 @@ const PAYMENT_METHODS = [
   { id: 'mixed',        icon: '🔀', label: 'Смешанная',    sub: 'сум + $'   },
 ]
 
+const UZS_METHODS = [
+  { id: 'cash_uzs',     icon: '💵', label: 'Наличные сум'  },
+  { id: 'transfer_uzs', icon: '📲', label: 'Перевод'        },
+  { id: 'qr_uzs',       icon: '📱', label: 'QR-код'         },
+  { id: 'bank',         icon: '🏦', label: 'Перечисление'   },
+  { id: 'requisites',   icon: '📋', label: 'Реквизиты'      },
+]
+
+const USD_METHODS = [
+  { id: 'visa_usd', icon: '💳', label: 'Visa карта' },
+  { id: 'cash_usd', icon: '💵', label: 'Наличные $'  },
+]
+
 function today() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -99,9 +112,11 @@ export default function SaleForm({ session }) {
   const [commission,   setCommission]   = useState('')
   const [discount,     setDiscount]     = useState('')
   const [dueDate,      setDueDate]      = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('')
-  const [paymentUZS,   setPaymentUZS]   = useState('')
-  const [paymentUSD,   setPaymentUSD]   = useState('')
+  const [paymentMethod,  setPaymentMethod]  = useState('')
+  const [paymentUZS,    setPaymentUZS]    = useState('')
+  const [paymentUSD,    setPaymentUSD]    = useState('')
+  const [mixedMethod1,  setMixedMethod1]  = useState('cash_uzs')   // UZS part method
+  const [mixedMethod2,  setMixedMethod2]  = useState('cash_usd')   // USD part method
 
   const [loading, setLoading] = useState(false)
   const { toast, show } = useToast()
@@ -156,7 +171,9 @@ export default function SaleForm({ session }) {
         commission: commission || undefined,
         discount: discount || undefined,
         dueDate: dueDate || undefined,
-        paymentMethod: paymentMethod || undefined,
+        paymentMethod: paymentMethod === 'mixed'
+          ? `mixed:${mixedMethod1}:${mixedMethod2}`
+          : (paymentMethod || undefined),
         paymentUZS: paymentUZS || undefined,
         paymentUSD: paymentUSD || undefined,
         departureDate: departureDate || undefined,
@@ -173,6 +190,7 @@ export default function SaleForm({ session }) {
         setCommission(''); setDiscount(''); setDueDate('')
         setDepartureDate(''); setArrivalDate('')
         setPaymentMethod(''); setPaymentUZS(''); setPaymentUSD('')
+        setMixedMethod1('cash_uzs'); setMixedMethod2('cash_usd')
       } else {
         show('❌ ' + res.error, 'error')
       }
@@ -438,37 +456,83 @@ export default function SaleForm({ session }) {
               })}
             </div>
 
-            {/* Смешанная оплата — доп. поля */}
+            {/* Смешанная оплата — выбор способа + суммы для каждой части */}
             {paymentMethod === 'mixed' && (
               <div style={{
-                marginTop: 12, padding: '14px', background: '#f0f9ff',
+                marginTop: 12, background: '#f0f9ff',
                 border: '1.5px solid #bae6fd', borderRadius: 14,
-                display: 'flex', flexDirection: 'column', gap: 10,
+                overflow: 'hidden',
               }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#0369a1' }}>
+                <div style={{ padding: '12px 14px 0', fontSize: 13, fontWeight: 800, color: '#0369a1' }}>
                   🔀 Разбивка смешанной оплаты
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                      Часть в сумах (UZS)
-                    </label>
-                    <input className="input" type="number" min="0" placeholder="0"
-                      style={{ marginBottom: 0 }}
-                      value={paymentUZS} onChange={e => setPaymentUZS(e.target.value)} />
+
+                {/* Часть 1 — UZS */}
+                <div style={{ padding: '12px 14px', borderBottom: '1px solid #bae6fd' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    Часть 1 — в сумах (UZS)
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-                      Часть в долларах ($)
-                    </label>
-                    <input className="input" type="number" min="0" placeholder="0"
-                      style={{ marginBottom: 0 }}
-                      value={paymentUSD} onChange={e => setPaymentUSD(e.target.value)} />
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {UZS_METHODS.map(m => (
+                      <button key={m.id} type="button"
+                        onClick={() => setMixedMethod1(m.id)}
+                        style={{
+                          padding: '6px 10px', borderRadius: 8, border: '1.5px solid',
+                          borderColor: mixedMethod1 === m.id ? '#0369a1' : '#bae6fd',
+                          background: mixedMethod1 === m.id ? '#0369a1' : '#fff',
+                          color: mixedMethod1 === m.id ? '#fff' : '#0369a1',
+                          cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          transition: 'all .15s',
+                        }}>
+                        {m.icon} {m.label}
+                      </button>
+                    ))}
                   </div>
+                  <input className="input" type="number" min="0" placeholder="Сумма в UZS"
+                    style={{ marginBottom: 0 }}
+                    value={paymentUZS} onChange={e => setPaymentUZS(e.target.value)} />
                 </div>
-                {paymentUZS && paymentUSD && rate && (
-                  <div style={{ fontSize: 12, color: '#0369a1' }}>
-                    ≈ {(Number(paymentUSD) + Number(paymentUZS) / Number(rate)).toFixed(0)} $ итого
+
+                {/* Часть 2 — USD */}
+                <div style={{ padding: '12px 14px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    Часть 2 — в долларах ($)
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                    {USD_METHODS.map(m => (
+                      <button key={m.id} type="button"
+                        onClick={() => setMixedMethod2(m.id)}
+                        style={{
+                          padding: '6px 14px', borderRadius: 8, border: '1.5px solid',
+                          borderColor: mixedMethod2 === m.id ? '#0369a1' : '#bae6fd',
+                          background: mixedMethod2 === m.id ? '#0369a1' : '#fff',
+                          color: mixedMethod2 === m.id ? '#fff' : '#0369a1',
+                          cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          transition: 'all .15s',
+                        }}>
+                        {m.icon} {m.label}
+                      </button>
+                    ))}
+                  </div>
+                  <input className="input" type="number" min="0" placeholder="Сумма в $"
+                    style={{ marginBottom: 0 }}
+                    value={paymentUSD} onChange={e => setPaymentUSD(e.target.value)} />
+                </div>
+
+                {/* Итого */}
+                {(paymentUZS || paymentUSD) && (
+                  <div style={{ padding: '10px 14px', background: '#e0f2fe', borderTop: '1px solid #bae6fd', fontSize: 12, color: '#0369a1', fontWeight: 700 }}>
+                    {[
+                      paymentUZS && `${Number(paymentUZS).toLocaleString('ru-RU')} сум`,
+                      paymentUSD && `${Number(paymentUSD).toLocaleString('ru-RU')} $`,
+                    ].filter(Boolean).join(' + ')}
+                    {paymentUZS && paymentUSD && rate && (
+                      <span style={{ fontWeight: 400, marginLeft: 8, opacity: 0.8 }}>
+                        ≈ {(Number(paymentUSD) + Number(paymentUZS) / Number(rate)).toFixed(0)} $ итого
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
