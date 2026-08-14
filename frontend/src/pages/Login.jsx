@@ -2,17 +2,18 @@ import { useState } from 'react'
 import { api } from '../api'
 
 export default function Login({ onLogin, onRegister }) {
-  const [login,    setLogin]    = useState('')
-  const [password, setPassword] = useState('')
-  const [error,    setError]    = useState('')
-  const [loading,  setLoading]  = useState(false)
+  const [agencyCode, setAgencyCode] = useState('')
+  const [login,      setLogin]      = useState('')
+  const [password,   setPassword]   = useState('')
+  const [error,      setError]      = useState('')
+  const [loading,    setLoading]    = useState(false)
 
   async function handleLogin() {
     if (!login.trim() || !password) { setError('Заполните все поля'); return }
     setLoading(true)
     setError('')
     try {
-      const r = await api.login(login.trim(), password)
+      const r = await api.login(agencyCode.trim(), login.trim(), password)
       if (r.success) {
         sessionStorage.setItem('crm_token',       r.token)
         sessionStorage.setItem('crm_role',        r.role)
@@ -53,7 +54,23 @@ export default function Login({ onLogin, onRegister }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
+              Код компании
+            </div>
+            <input
+              className="input"
+              type="text"
+              placeholder="например: sun-travel"
+              value={agencyCode}
+              autoComplete="organization"
+              onChange={e => { setAgencyCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')); setError('') }}
+              onKeyDown={e => e.key === 'Enter' && document.getElementById('login-input')?.focus()}
+              style={{ marginBottom: 0, fontFamily: 'monospace', letterSpacing: 1 }}
+            />
+          </div>
           <input
+            id="login-input"
             className="input"
             type="text"
             placeholder="Логин"
@@ -94,10 +111,6 @@ export default function Login({ onLogin, onRegister }) {
         >
           {loading ? '⏳ Вход...' : 'Войти'}
         </button>
-
-        <div style={{ marginTop: 20, padding: '12px', background: '#f8fafc', borderRadius: 12, fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>
-          Первый вход: <strong>admin / 1234</strong>
-        </div>
 
         <div style={{ marginTop: 16, textAlign: 'center' }}>
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>Нет аккаунта? </span>

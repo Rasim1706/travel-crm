@@ -276,9 +276,175 @@ function AccountsManager({ show }) {
   )
 }
 
+const AVATARS = ['🏢','✈️','🌴','🌊','🏖️','🌍','🧳','🗺️','🛫','🏝️','⛵','🌅','🌺','🐬','🦋','🎯','🌈','🏄','🎪','🌻']
+const SERVICE_ACCOUNT = 'travel-crm-bot@travel-crm-497007.iam.gserviceaccount.com'
+
+function AgencySettings({ show }) {
+  const [info,       setInfo]       = useState(null)
+  const [form,       setForm]       = useState({ name: '', email: '', avatar: '🏢', sheetUrl: '' })
+  const [loading,    setLoading]    = useState(true)
+  const [saving,     setSaving]     = useState(false)
+  const [copied,     setCopied]     = useState(false)
+  const [copiedSA,   setCopiedSA]   = useState(false)
+  const [changeSheet, setChangeSheet] = useState(false)
+
+  useEffect(() => {
+    api.getAgencyInfo().then(r => {
+      if (r.success) {
+        setInfo(r)
+        setForm({ name: r.name || '', email: r.email || '', avatar: r.avatar || '🏢', sheetUrl: '' })
+      }
+      setLoading(false)
+    })
+  }, [])
+
+  async function handleSave() {
+    if (!form.name.trim()) return show('❌ Введите название агентства', 'error')
+    setSaving(true)
+    const payload = { name: form.name.trim(), email: form.email.trim(), avatar: form.avatar }
+    if (changeSheet && form.sheetUrl.trim()) payload.sheetUrl = form.sheetUrl.trim()
+    const r = await api.updateAgencyInfo(payload)
+    if (r.success) {
+      setInfo(r)
+      setForm(f => ({ ...f, sheetUrl: '' }))
+      setChangeSheet(false)
+      show('✅ Данные агентства обновлены')
+    } else {
+      show('❌ ' + r.error, 'error')
+    }
+    setSaving(false)
+  }
+
+  function copySlug() {
+    if (!info?.slug) return
+    navigator.clipboard.writeText(info.slug).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+  }
+  function copySA() {
+    navigator.clipboard.writeText(SERVICE_ACCOUNT).then(() => { setCopiedSA(true); setTimeout(() => setCopiedSA(false), 2000) })
+  }
+
+  if (loading) return <div className="loader">⏳ Загрузка...</div>
+  if (!info)   return <div style={{ color: '#ef4444', padding: 16 }}>Не удалось загрузить данные</div>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Код компании */}
+      {info.slug && (
+        <div style={{ background: '#f0f9ff', border: '2px solid #007aff', borderRadius: 16, padding: '16px 20px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+            Код компании для входа
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 22, fontWeight: 800, color: '#1e293b', letterSpacing: 2, flex: 1 }}>
+              {info.slug}
+            </span>
+            <button onClick={copySlug} style={{
+              background: copied ? '#22c55e' : '#007aff', color: '#fff', border: 'none',
+              borderRadius: 10, padding: '8px 18px', cursor: 'pointer', fontSize: 13,
+              fontWeight: 700, fontFamily: 'inherit', transition: 'background .2s',
+            }}>
+              {copied ? '✓ Скопировано' : 'Копировать'}
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: '#0369a1', marginTop: 6 }}>
+            Сообщите код менеджерам — они вводят его при каждом входе
+          </div>
+        </div>
+      )}
+
+      {/* Форма */}
+      <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 16, padding: '20px' }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>✏️ Данные агентства</div>
+
+        {/* Аватар */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 8 }}>Логотип-эмодзи</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {AVATARS.map(em => (
+              <button key={em} type="button" onClick={() => setForm(f => ({ ...f, avatar: em }))} style={{
+                width: 44, height: 44, borderRadius: 12, border: 'none', fontSize: 22, cursor: 'pointer',
+                transition: 'all .15s',
+                background: form.avatar === em ? 'var(--primary)' : '#f1f5f9',
+                boxShadow: form.avatar === em ? '0 2px 8px rgba(0,122,255,0.4)' : 'none',
+                transform: form.avatar === em ? 'scale(1.12)' : 'scale(1)',
+              }}>{em}</button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>Название агентства *</div>
+            <input className="input" style={{ marginBottom: 0 }}
+              value={form.name} placeholder="Название вашего агентства"
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>Email</div>
+            <input className="input" type="email" style={{ marginBottom: 0 }}
+              value={form.email} placeholder="email@example.com"
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+          </div>
+        </div>
+
+        <button className="btn" style={{ marginTop: 16 }} onClick={handleSave} disabled={saving}>
+          {saving ? '⏳ Сохранение...' : '💾 Сохранить'}
+        </button>
+      </div>
+
+      {/* Таблица */}
+      <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 16, padding: '20px' }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>📊 Google Таблица</div>
+        {info.spreadsheetUrl ? (
+          <a href={info.spreadsheetUrl} target="_blank" rel="noreferrer"
+            style={{ display: 'inline-block', fontSize: 13, color: '#007aff', fontWeight: 600, marginBottom: 12, wordBreak: 'break-all' }}>
+            🔗 Открыть таблицу →
+          </a>
+        ) : (
+          <div style={{ fontSize: 13, color: '#ef4444', marginBottom: 12 }}>⚠️ Таблица не привязана</div>
+        )}
+
+        {!changeSheet ? (
+          <button onClick={() => setChangeSheet(true)}
+            style={{ background: '#f1f5f9', border: '1px solid var(--border)', borderRadius: 10, padding: '8px 16px', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}>
+            🔄 Изменить таблицу
+          </button>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#92400e' }}>
+              <strong>Важно:</strong> Убедитесь что новая таблица доступна сервисному аккаунту как Редактор:
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, background: '#fff', borderRadius: 6, padding: '6px 8px', border: '1px solid #fcd34d' }}>
+                <span style={{ fontSize: 11, fontFamily: 'monospace', flex: 1, wordBreak: 'break-all', color: '#0369a1' }}>{SERVICE_ACCOUNT}</span>
+                <button onClick={copySA}
+                  style={{ background: copiedSA ? '#22c55e' : '#007aff', color: '#fff', border: 'none', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'inherit', flexShrink: 0 }}>
+                  {copiedSA ? '✓' : 'Копировать'}
+                </button>
+              </div>
+            </div>
+            <input className="input" style={{ marginBottom: 0, fontSize: 13 }}
+              placeholder="https://docs.google.com/spreadsheets/d/..."
+              value={form.sheetUrl}
+              onChange={e => setForm(f => ({ ...f, sheetUrl: e.target.value }))} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => { setChangeSheet(false); setForm(f => ({ ...f, sheetUrl: '' })) }}
+                style={{ flex: 1, padding: '10px', background: '#f1f5f9', border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}>
+                Отмена
+              </button>
+              <button className="btn" style={{ flex: 2 }} onClick={handleSave} disabled={saving}>
+                {saving ? '⏳ Проверка...' : '🔗 Привязать таблицу'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Settings({ session }) {
   const isAdmin = session?.role === 'admin'
-  const [tab, setTab] = useState('directions')
+  const [tab, setTab] = useState(isAdmin ? 'agency' : 'directions')
   const [directions, setDirections] = useState([])
   const [hotels, setHotels] = useState([])
   const [sources, setSources] = useState([])
@@ -335,10 +501,11 @@ export default function Settings({ session }) {
   if (loading) return <div className="loader">⏳ Загрузка...</div>
 
   const tabList = [
+    ...(isAdmin ? [{ id: 'agency',     label: '🏢 Агентство',  count: null }] : []),
     { id: 'directions', label: '🌍 Направления', count: directions.length },
     { id: 'hotels',     label: '🏨 Отели',       count: hotels.length     },
     { id: 'sources',    label: '📣 Источники',   count: sources.length    },
-    ...(isAdmin ? [{ id: 'accounts', label: '👤 Аккаунты', count: null }] : []),
+    ...(isAdmin ? [{ id: 'accounts',   label: '👤 Аккаунты',   count: null }] : []),
   ]
 
   return (
@@ -364,6 +531,13 @@ export default function Settings({ session }) {
           </button>
         ))}
       </div>
+
+      {tab === 'agency' && isAdmin && (
+        <div className="card">
+          <div className="card-title">🏢 Настройки агентства</div>
+          <AgencySettings show={show} />
+        </div>
+      )}
 
       {tab === 'directions' && (
         <div className="card">

@@ -12,16 +12,24 @@ export default function Register({ onRegister, onBack }) {
   const [login,      setLogin]      = useState('')
   const [password,   setPassword]   = useState('')
   const [confirm,    setConfirm]    = useState('')
-  const [sheetUrl,   setSheetUrl]   = useState('')
-  const [error,      setError]      = useState('')
-  const [loading,    setLoading]    = useState(false)
-  const [success,    setSuccess]    = useState(null)
-  const [copied,     setCopied]     = useState(false)
+  const [sheetUrl,    setSheetUrl]    = useState('')
+  const [error,       setError]       = useState('')
+  const [loading,     setLoading]     = useState(false)
+  const [success,     setSuccess]     = useState(null)
+  const [copied,      setCopied]      = useState(false)
+  const [copiedSlug,  setCopiedSlug]  = useState(false)
 
   function copyEmail() {
     navigator.clipboard.writeText(SERVICE_ACCOUNT).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  function copySlug(slug) {
+    navigator.clipboard.writeText(slug).then(() => {
+      setCopiedSlug(true)
+      setTimeout(() => setCopiedSlug(false), 2000)
     })
   }
 
@@ -77,7 +85,30 @@ export default function Register({ onRegister, onBack }) {
         <div style={{ background: '#fff', borderRadius: 24, padding: '40px 32px', width: '100%', maxWidth: 420, boxShadow: '0 24px 64px rgba(0,0,0,0.2)', textAlign: 'center' }}>
           <div style={{ fontSize: 52, marginBottom: 16 }}>✅</div>
           <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', marginBottom: 8 }}>Агентство зарегистрировано!</h2>
-          <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 24 }}>Таблица подключена и готова к работе</p>
+          <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 20 }}>Таблица подключена и готова к работе</p>
+
+          {success.slug && (
+            <div style={{ background: '#f0f9ff', border: '2px solid #007aff', borderRadius: 16, padding: '16px 20px', marginBottom: 20, textAlign: 'left' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#0369a1', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
+                Ваш код компании для входа
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 800, color: '#1e293b', flex: 1, letterSpacing: 1 }}>
+                  {success.slug}
+                </span>
+                <button
+                  onClick={() => copySlug(success.slug)}
+                  style={{ background: copiedSlug ? '#22c55e' : '#007aff', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', transition: 'background .2s', flexShrink: 0 }}
+                >
+                  {copiedSlug ? '✓ Скопировано' : 'Копировать'}
+                </button>
+              </div>
+              <div style={{ fontSize: 12, color: '#0369a1', marginTop: 8 }}>
+                Сохраните этот код — он нужен при каждом входе в систему
+              </div>
+            </div>
+          )}
+
           <a
             href={success.spreadsheetUrl}
             target="_blank"

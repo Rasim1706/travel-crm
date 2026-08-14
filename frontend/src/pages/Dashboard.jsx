@@ -176,9 +176,10 @@ export default function Dashboard() {
   const [savingDebt,  setSavingDebt]  = useState(false)
 
   // Модальное редактирование заявки
-  const [editModalSale, setEditModalSale] = useState(null)
-  const [editModalData, setEditModalData] = useState({})
-  const [savingModal,   setSavingModal]   = useState(false)
+  const [editModalSale,  setEditModalSale]  = useState(null)
+  const [editModalData,  setEditModalData]  = useState({})
+  const [savingModal,    setSavingModal]    = useState(false)
+  const [modalError,     setModalError]     = useState('')
 
   const [deletingId,     setDeletingId]     = useState(null)
   const [callListOpen,   setCallListOpen]   = useState(true)
@@ -330,6 +331,7 @@ export default function Dashboard() {
   async function saveModal() {
     if (!editModalSale) return
     setSavingModal(true)
+    setModalError('')
     try {
       const d = editModalData
       const payload = {
@@ -366,7 +368,12 @@ export default function Dashboard() {
           salesCount: Number(payload.salesCount),
         } : s))
         setEditModalSale(null)
+        setModalError('')
+      } else {
+        setModalError(res.error || 'Ошибка сохранения')
       }
+    } catch (e) {
+      setModalError('Ошибка соединения с сервером')
     } finally { setSavingModal(false) }
   }
 
@@ -870,9 +877,16 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Ошибка сохранения */}
+            {modalError && (
+              <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, fontSize: 13, color: '#dc2626' }}>
+                ❌ {modalError}
+              </div>
+            )}
+
             {/* Кнопки */}
-            <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
-              <button onClick={() => setEditModalSale(null)}
+            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+              <button onClick={() => { setEditModalSale(null); setModalError('') }}
                 style={{ flex: 1, padding: '13px', background: 'rgba(0,0,0,0.05)', border: 'none', borderRadius: 980, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                 Отмена
               </button>

@@ -15,7 +15,7 @@ async function call(url, options = {}) {
 
 export const api = {
   // Auth
-  login:    (login, password) => call('/api/auth/login', { method: 'POST', body: JSON.stringify({ login, password }) }),
+  login:    (agencyCode, login, password) => call('/api/auth/login', { method: 'POST', body: JSON.stringify({ agencyCode, login, password }) }),
   register: (data)            => call('/api/register',   { method: 'POST', body: JSON.stringify(data) }),
 
   // Accounts (admin only)
@@ -27,6 +27,10 @@ export const api = {
 
   // Managers (read-only — names come from Accounts sheet)
   getManagers: () => call('/api/managers'),
+
+  // Agency info
+  getAgencyInfo:    ()     => call('/api/agency/info'),
+  updateAgencyInfo: (data) => call('/api/agency/info', { method: 'PUT', body: JSON.stringify(data) }),
 
   // Exchange rate proxy
   getExchangeRate: () => call('/api/exchange-rate'),
