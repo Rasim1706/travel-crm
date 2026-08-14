@@ -121,6 +121,7 @@ export default function SaleForm({ session }) {
 
   const [loading,    setLoading]    = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [stepError,   setStepError]   = useState('')
   const { toast, show } = useToast()
 
   // Авто-расчёт комиссии = сумма − нетто
@@ -349,7 +350,8 @@ export default function SaleForm({ session }) {
           <div className="form-group">
             <label className="label">Номер договора *</label>
             <input className="input" type="text" placeholder="ДГВ-2026-001"
-              value={contractNumber} onChange={e => setContractNumber(e.target.value)} />
+              value={contractNumber} onChange={e => { setContractNumber(e.target.value); if (e.target.value.trim()) setStepError('') }}
+              style={{ borderColor: stepError && !contractNumber.trim() ? '#ef4444' : undefined }} />
           </div>
 
           <div className="form-group">
@@ -625,7 +627,18 @@ export default function SaleForm({ session }) {
         {step < 4 ? (
           <button
             type="button"
-            onClick={() => { if (canNext()) { setStep(s => s + 1) } else { show('Заполните обязательные поля', 'error') } }}
+            onClick={() => {
+              if (canNext()) {
+                setStepError('')
+                setStep(s => s + 1)
+              } else {
+                const msg = step === 3 && !contractNumber.trim()
+                  ? 'Введите номер договора — это обязательное поле'
+                  : 'Заполните обязательные поля'
+                setStepError(msg)
+                show(msg, 'error')
+              }
+            }}
             className="btn"
             style={{ flex: 2 }}
           >
@@ -644,9 +657,9 @@ export default function SaleForm({ session }) {
         )}
       </div>
 
-      {submitError && (
-        <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, fontSize: 13, color: '#dc2626' }}>
-          ❌ {submitError}
+      {(submitError || stepError) && (
+        <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, fontSize: 13, color: '#dc2626', fontWeight: 600 }}>
+          ❌ {submitError || stepError}
         </div>
       )}
 
