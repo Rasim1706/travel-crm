@@ -119,7 +119,8 @@ export default function SaleForm({ session }) {
   // Курс
   const [rateType, setRateType] = useState('')   // 'bank' | 'operator'
 
-  const [loading, setLoading] = useState(false)
+  const [loading,    setLoading]    = useState(false)
+  const [submitError, setSubmitError] = useState('')
   const { toast, show } = useToast()
 
   // Авто-расчёт комиссии = сумма − нетто
@@ -150,20 +151,28 @@ export default function SaleForm({ session }) {
   function canNext() {
     if (step === 1) return true // всё необязательно
     if (step === 2) return true
-    if (step === 3) return contractNumber.trim() && manager && salesCount >= 1
+    if (step === 3) return contractNumber.trim() && (manager || session?.name) && salesCount >= 1
     return true
   }
 
   async function handleSubmit() {
-    if (!contractNumber.trim()) return show('Введите номер договора', 'error')
-    if (!manager)               return show('Выберите менеджера', 'error')
+    setSubmitError('')
+    const effectiveManager = manager || (isManager ? session.name : session.name)
+    if (!contractNumber.trim()) {
+      setSubmitError('Введите номер договора')
+      return show('Введите номер договора', 'error')
+    }
+    if (!effectiveManager) {
+      setSubmitError('Выберите менеджера на шаге 3')
+      return show('Выберите менеджера', 'error')
+    }
 
     setLoading(true)
     try {
       const res = await api.addSale({
         clientName, phone, source,
         direction, hotel, bookingDate,
-        manager, contractNumber, salesCount,
+        manager: effectiveManager, contractNumber, salesCount,
         amount: amount || undefined,
         currency,
         rate: rate || undefined,
@@ -181,6 +190,7 @@ export default function SaleForm({ session }) {
         arrivalDate: arrivalDate || undefined,
       })
       if (res.success) {
+        setSubmitError('')
         show('✅ Запись сохранена!')
         setStep(1)
         setClientName(''); setPhone(''); setSource('')
@@ -194,9 +204,11 @@ export default function SaleForm({ session }) {
         setMixedMethod1('cash_uzs'); setMixedMethod2('cash_usd')
         setRateType('')
       } else {
+        setSubmitError(res.error || 'Ошибка сохранения')
         show('❌ ' + res.error, 'error')
       }
     } catch {
+      setSubmitError('Ошибка соединения с сервером')
       show('❌ Ошибка соединения', 'error')
     } finally {
       setLoading(false)
@@ -631,6 +643,12 @@ export default function SaleForm({ session }) {
           </button>
         )}
       </div>
+
+      {submitError && (
+        <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, fontSize: 13, color: '#dc2626' }}>
+          ❌ {submitError}
+        </div>
+      )}
 
       {/* Краткое резюме заполненного */}
       {(clientName || direction || contractNumber) && (
