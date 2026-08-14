@@ -28,6 +28,9 @@ export const api = {
   // Managers (read-only — names come from Accounts sheet)
   getManagers: () => call('/api/managers'),
 
+  // Exchange rate proxy
+  getExchangeRate: () => call('/api/exchange-rate'),
+
   // Sales
   getSales:    ()                  => call('/api/sales'),
   addSale:     (data)              => call('/api/sales', { method: 'POST', body: JSON.stringify(data) }),

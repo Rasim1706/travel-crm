@@ -118,6 +118,11 @@ export default function SaleForm({ session }) {
   const [mixedMethod1,  setMixedMethod1]  = useState('cash_uzs')   // UZS part method
   const [mixedMethod2,  setMixedMethod2]  = useState('cash_usd')   // USD part method
 
+  // Курс
+  const [rateType,     setRateType]     = useState('')    // 'bank' | 'operator'
+  const [fetchingRate, setFetchingRate] = useState(false)
+  const [rateError,    setRateError]    = useState('')
+
   const [loading, setLoading] = useState(false)
   const { toast, show } = useToast()
 
@@ -128,6 +133,16 @@ export default function SaleForm({ session }) {
       setCommission(auto >= 0 ? String(auto) : '')
     }
   }, [amount, netto])
+
+  async function fetchBankRate() {
+    setFetchingRate(true); setRateError('')
+    try {
+      const r = await api.getExchangeRate()
+      if (r.success) setRate(String(Math.round(r.rate)))
+      else setRateError('Не удалось загрузить курс')
+    } catch { setRateError('Ошибка соединения') }
+    finally { setFetchingRate(false) }
+  }
 
   // Авто-расчёты
   const balance = commission ? Number(commission) - (Number(discount) || 0) : null
@@ -191,6 +206,7 @@ export default function SaleForm({ session }) {
         setDepartureDate(''); setArrivalDate('')
         setPaymentMethod(''); setPaymentUZS(''); setPaymentUSD('')
         setMixedMethod1('cash_uzs'); setMixedMethod2('cash_usd')
+        setRateType(''); setRateError('')
       } else {
         show('❌ ' + res.error, 'error')
       }
@@ -382,9 +398,76 @@ export default function SaleForm({ session }) {
 
           {/* Курс доллара */}
           <div className="form-group">
-            <label className="label">Курс доллара сегодня (1 $ = ? сум)</label>
-            <input className="input" type="number" min="0" step="1" placeholder="12 800"
-              value={rate} onChange={e => setRate(e.target.value)} />
+            <label className="label">Курс доллара (1 $ = ? сум)</label>
+
+            {/* Выбор источника курса */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <button type="button"
+                onClick={() => { setRateType('bank'); setRate(''); fetchBankRate() }}
+                style={{
+                  flex: 1, padding: '11px 8px', borderRadius: 12, border: '1.5px solid',
+                  borderColor: rateType === 'bank' ? 'var(--primary)' : 'var(--border)',
+                  background: rateType === 'bank' ? 'var(--primary)' : '#f8fafc',
+                  color: rateType === 'bank' ? '#fff' : 'var(--text)',
+                  cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
+                  transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}>
+                🏦 Ipak Yuli Bank
+              </button>
+              <button type="button"
+                onClick={() => { setRateType('operator'); setRate('') }}
+                style={{
+                  flex: 1, padding: '11px 8px', borderRadius: 12, border: '1.5px solid',
+                  borderColor: rateType === 'operator' ? 'var(--primary)' : 'var(--border)',
+                  background: rateType === 'operator' ? 'var(--primary)' : '#f8fafc',
+                  color: rateType === 'operator' ? '#fff' : 'var(--text)',
+                  cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
+                  transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}>
+                👤 Курс оператора
+              </button>
+            </div>
+
+            {/* Банковский курс — показываем загруженное значение */}
+            {rateType === 'bank' && (
+              <div style={{
+                background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: 13,
+                padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
+              }}>
+                {fetchingRate ? (
+                  <span style={{ fontSize: 14, color: '#0369a1' }}>⏳ Загружаем курс...</span>
+                ) : rateError ? (
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 13, color: '#dc2626' }}>❌ {rateError}</span>
+                    <button type="button" onClick={fetchBankRate}
+                      style={{ marginLeft: 10, fontSize: 12, color: '#0369a1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
+                      Повторить
+                    </button>
+                  </div>
+                ) : rate ? (
+                  <>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#0369a1' }}>
+                        1 $ = {Number(rate).toLocaleString('ru-RU')} сум
+                      </div>
+                      <div style={{ fontSize: 11, color: '#0369a1', opacity: 0.7, marginTop: 2 }}>
+                        Курс Ipak Yuli Bank
+                      </div>
+                    </div>
+                    <button type="button" onClick={fetchBankRate}
+                      style={{ background: '#bae6fd', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#0369a1', fontFamily: 'inherit' }}>
+                      🔄 Обновить
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            )}
+
+            {/* Ручной ввод курса оператора */}
+            {rateType === 'operator' && (
+              <input className="input" type="number" min="0" step="1" placeholder="Например: 12 800"
+                value={rate} onChange={e => setRate(e.target.value)} />
+            )}
           </div>
 
           {/* Цена нетто */}

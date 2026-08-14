@@ -568,6 +568,41 @@ app.post('/api/sales', async (req, res) => {
   } catch (e) { res.json({ success: false, error: e.message }); }
 });
 
+// ── Курс валют (прокси CBU + Ipak Yuli Bank) ─────────
+app.get('/api/exchange-rate', async (req, res) => {
+  try {
+    // Ipak Yuli Bank публикует курс через свой API
+    let rate = null;
+    try {
+      const ipakRes = await fetch('https://ipak-yuli.uz/api/currency/rates', {
+        headers: { 'Accept': 'application/json' }, signal: AbortSignal.timeout(4000),
+      });
+      if (ipakRes.ok) {
+        const ipakData = await ipakRes.json();
+        // Ищем USD sell rate в ответе
+        const usdEntry = Array.isArray(ipakData)
+          ? ipakData.find(x => (x.code || x.currency || '').toUpperCase() === 'USD')
+          : null;
+        if (usdEntry) rate = Number(usdEntry.sell || usdEntry.rate || usdEntry.saleRate);
+      }
+    } catch { /* fallback to CBU */ }
+
+    // Fallback: Центральный банк Узбекистана
+    if (!rate) {
+      const cbuRes = await fetch('https://cbu.uz/en/arkhiv-kursov-valyut/json/USD/', {
+        signal: AbortSignal.timeout(5000),
+      });
+      const cbuData = await cbuRes.json();
+      rate = Number(cbuData[0]?.Rate);
+    }
+
+    if (!rate || isNaN(rate)) return res.json({ success: false, error: 'Не удалось получить курс' });
+    res.json({ success: true, rate, source: 'CBU' });
+  } catch (e) {
+    res.json({ success: false, error: 'Ошибка загрузки курса: ' + e.message });
+  }
+});
+
 app.get('/api/sales', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
   const spreadsheetId = sessionSpreadsheetId(req);
