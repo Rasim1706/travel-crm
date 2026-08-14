@@ -17,17 +17,15 @@ const PAYMENT_METHODS = [
   { id: 'mixed',        icon: '🔀', label: 'Смешанная',    sub: 'сум + $'   },
 ]
 
-const UZS_METHODS = [
-  { id: 'cash_uzs',     icon: '💵', label: 'Наличные сум'  },
-  { id: 'transfer_uzs', icon: '📲', label: 'Перевод'        },
-  { id: 'qr_uzs',       icon: '📱', label: 'QR-код'         },
-  { id: 'bank',         icon: '🏦', label: 'Перечисление'   },
-  { id: 'requisites',   icon: '📋', label: 'Реквизиты'      },
-]
-
-const USD_METHODS = [
-  { id: 'visa_usd', icon: '💳', label: 'Visa карта' },
-  { id: 'cash_usd', icon: '💵', label: 'Наличные $'  },
+// Все методы для смешанной оплаты (оба поля одинаковые)
+const MIXED_PART_METHODS = [
+  { id: 'cash_uzs',     icon: '💵', label: 'Наличными сум'     },
+  { id: 'transfer_uzs', icon: '📲', label: 'Наличные переводом' },
+  { id: 'qr_uzs',       icon: '📱', label: 'QR-код'             },
+  { id: 'bank',         icon: '🏦', label: 'Перечисление'       },
+  { id: 'requisites',   icon: '📋', label: 'Реквизиты'          },
+  { id: 'visa_usd',     icon: '💳', label: 'Visa карта $'       },
+  { id: 'cash_usd',     icon: '💵', label: 'Наличные $'          },
 ]
 
 function today() {
@@ -119,9 +117,7 @@ export default function SaleForm({ session }) {
   const [mixedMethod2,  setMixedMethod2]  = useState('cash_usd')   // USD part method
 
   // Курс
-  const [rateType,     setRateType]     = useState('')    // 'bank' | 'operator'
-  const [fetchingRate, setFetchingRate] = useState(false)
-  const [rateError,    setRateError]    = useState('')
+  const [rateType, setRateType] = useState('')   // 'bank' | 'operator'
 
   const [loading, setLoading] = useState(false)
   const { toast, show } = useToast()
@@ -133,16 +129,6 @@ export default function SaleForm({ session }) {
       setCommission(auto >= 0 ? String(auto) : '')
     }
   }, [amount, netto])
-
-  async function fetchBankRate() {
-    setFetchingRate(true); setRateError('')
-    try {
-      const r = await api.getExchangeRate()
-      if (r.success) setRate(String(Math.round(r.rate)))
-      else setRateError('Не удалось загрузить курс')
-    } catch { setRateError('Ошибка соединения') }
-    finally { setFetchingRate(false) }
-  }
 
   // Авто-расчёты
   const balance = commission ? Number(commission) - (Number(discount) || 0) : null
@@ -206,7 +192,7 @@ export default function SaleForm({ session }) {
         setDepartureDate(''); setArrivalDate('')
         setPaymentMethod(''); setPaymentUZS(''); setPaymentUSD('')
         setMixedMethod1('cash_uzs'); setMixedMethod2('cash_usd')
-        setRateType(''); setRateError('')
+        setRateType('')
       } else {
         show('❌ ' + res.error, 'error')
       }
@@ -400,73 +386,43 @@ export default function SaleForm({ session }) {
           <div className="form-group">
             <label className="label">Курс доллара (1 $ = ? сум)</label>
 
-            {/* Выбор источника курса */}
+            {/* Выбор типа курса */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-              <button type="button"
-                onClick={() => { setRateType('bank'); setRate(''); fetchBankRate() }}
-                style={{
-                  flex: 1, padding: '11px 8px', borderRadius: 12, border: '1.5px solid',
-                  borderColor: rateType === 'bank' ? 'var(--primary)' : 'var(--border)',
-                  background: rateType === 'bank' ? 'var(--primary)' : '#f8fafc',
-                  color: rateType === 'bank' ? '#fff' : 'var(--text)',
-                  cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
-                  transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                }}>
-                🏦 Ipak Yuli Bank
-              </button>
-              <button type="button"
-                onClick={() => { setRateType('operator'); setRate('') }}
-                style={{
-                  flex: 1, padding: '11px 8px', borderRadius: 12, border: '1.5px solid',
-                  borderColor: rateType === 'operator' ? 'var(--primary)' : 'var(--border)',
-                  background: rateType === 'operator' ? 'var(--primary)' : '#f8fafc',
-                  color: rateType === 'operator' ? '#fff' : 'var(--text)',
-                  cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
-                  transition: 'all .15s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                }}>
-                👤 Курс оператора
-              </button>
+              {[
+                { id: 'bank',     icon: '🏦', label: 'Курс Ipak Yuli'  },
+                { id: 'operator', icon: '👤', label: 'Курс оператора'  },
+              ].map(rt => (
+                <button key={rt.id} type="button"
+                  onClick={() => { setRateType(rt.id); setRate('') }}
+                  style={{
+                    flex: 1, padding: '11px 8px', borderRadius: 12, border: '1.5px solid',
+                    borderColor: rateType === rt.id ? 'var(--primary)' : 'var(--border)',
+                    background:  rateType === rt.id ? 'var(--primary)' : '#f8fafc',
+                    color:       rateType === rt.id ? '#fff' : 'var(--text)',
+                    cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
+                    transition: 'all .15s',
+                  }}>
+                  {rt.icon} {rt.label}
+                </button>
+              ))}
             </div>
 
-            {/* Банковский курс — показываем загруженное значение */}
-            {rateType === 'bank' && (
-              <div style={{
-                background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: 13,
-                padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
-              }}>
-                {fetchingRate ? (
-                  <span style={{ fontSize: 14, color: '#0369a1' }}>⏳ Загружаем курс...</span>
-                ) : rateError ? (
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: 13, color: '#dc2626' }}>❌ {rateError}</span>
-                    <button type="button" onClick={fetchBankRate}
-                      style={{ marginLeft: 10, fontSize: 12, color: '#0369a1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
-                      Повторить
-                    </button>
-                  </div>
-                ) : rate ? (
-                  <>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: '#0369a1' }}>
-                        1 $ = {Number(rate).toLocaleString('ru-RU')} сум
-                      </div>
-                      <div style={{ fontSize: 11, color: '#0369a1', opacity: 0.7, marginTop: 2 }}>
-                        Курс Ipak Yuli Bank
-                      </div>
-                    </div>
-                    <button type="button" onClick={fetchBankRate}
-                      style={{ background: '#bae6fd', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#0369a1', fontFamily: 'inherit' }}>
-                      🔄 Обновить
-                    </button>
-                  </>
-                ) : null}
+            {/* Ввод курса — одинаковый для обоих вариантов */}
+            {rateType && (
+              <div style={{ position: 'relative' }}>
+                <input className="input" type="number" min="0" step="1"
+                  placeholder={rateType === 'bank' ? 'Курс Ipak Yuli на сегодня' : 'Введите курс оператора'}
+                  value={rate} onChange={e => setRate(e.target.value)}
+                  style={{ paddingRight: rate ? 90 : undefined }} />
+                {rate && (
+                  <span style={{
+                    position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)',
+                    fontSize: 12, fontWeight: 700, color: 'var(--primary)', pointerEvents: 'none',
+                  }}>
+                    1 $ = {Number(rate).toLocaleString('ru-RU')} сум
+                  </span>
+                )}
               </div>
-            )}
-
-            {/* Ручной ввод курса оператора */}
-            {rateType === 'operator' && (
-              <input className="input" type="number" min="0" step="1" placeholder="Например: 12 800"
-                value={rate} onChange={e => setRate(e.target.value)} />
             )}
           </div>
 
@@ -539,83 +495,56 @@ export default function SaleForm({ session }) {
               })}
             </div>
 
-            {/* Смешанная оплата — выбор способа + суммы для каждой части */}
+            {/* Смешанная оплата — два одинаковых поля */}
             {paymentMethod === 'mixed' && (
               <div style={{
                 marginTop: 12, background: '#f0f9ff',
                 border: '1.5px solid #bae6fd', borderRadius: 14,
                 overflow: 'hidden',
               }}>
-                <div style={{ padding: '12px 14px 0', fontSize: 13, fontWeight: 800, color: '#0369a1' }}>
+                <div style={{ padding: '12px 14px 4px', fontSize: 13, fontWeight: 800, color: '#0369a1' }}>
                   🔀 Разбивка смешанной оплаты
                 </div>
 
-                {/* Часть 1 — UZS */}
-                <div style={{ padding: '12px 14px', borderBottom: '1px solid #bae6fd' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                    Часть 1 — в сумах (UZS)
+                {/* Часть 1 */}
+                {[
+                  { label: 'Часть 1', method: mixedMethod1, setMethod: setMixedMethod1, amount: paymentUZS, setAmount: setPaymentUZS, placeholder: 'Сумма' },
+                  { label: 'Часть 2', method: mixedMethod2, setMethod: setMixedMethod2, amount: paymentUSD, setAmount: setPaymentUSD, placeholder: 'Сумма' },
+                ].map((part, idx) => (
+                  <div key={idx} style={{ padding: '12px 14px', borderTop: idx > 0 ? '1px solid #bae6fd' : 'none' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                      {part.label}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, marginBottom: 10 }}>
+                      {MIXED_PART_METHODS.map(m => (
+                        <button key={m.id} type="button"
+                          onClick={() => part.setMethod(m.id)}
+                          style={{
+                            padding: '9px 8px', borderRadius: 10, border: '1.5px solid',
+                            borderColor: part.method === m.id ? '#0369a1' : '#bae6fd',
+                            background:  part.method === m.id ? '#0369a1' : '#fff',
+                            color:       part.method === m.id ? '#fff' : '#0369a1',
+                            cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
+                            display: 'flex', alignItems: 'center', gap: 6, textAlign: 'left',
+                            transition: 'all .15s',
+                          }}>
+                          <span>{m.icon}</span> {m.label}
+                        </button>
+                      ))}
+                    </div>
+                    <input className="input" type="number" min="0" placeholder={part.placeholder}
+                      style={{ marginBottom: 0 }}
+                      value={part.amount} onChange={e => part.setAmount(e.target.value)} />
                   </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                    {UZS_METHODS.map(m => (
-                      <button key={m.id} type="button"
-                        onClick={() => setMixedMethod1(m.id)}
-                        style={{
-                          padding: '6px 10px', borderRadius: 8, border: '1.5px solid',
-                          borderColor: mixedMethod1 === m.id ? '#0369a1' : '#bae6fd',
-                          background: mixedMethod1 === m.id ? '#0369a1' : '#fff',
-                          color: mixedMethod1 === m.id ? '#fff' : '#0369a1',
-                          cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-                          display: 'flex', alignItems: 'center', gap: 4,
-                          transition: 'all .15s',
-                        }}>
-                        {m.icon} {m.label}
-                      </button>
-                    ))}
-                  </div>
-                  <input className="input" type="number" min="0" placeholder="Сумма в UZS"
-                    style={{ marginBottom: 0 }}
-                    value={paymentUZS} onChange={e => setPaymentUZS(e.target.value)} />
-                </div>
-
-                {/* Часть 2 — USD */}
-                <div style={{ padding: '12px 14px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                    Часть 2 — в долларах ($)
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                    {USD_METHODS.map(m => (
-                      <button key={m.id} type="button"
-                        onClick={() => setMixedMethod2(m.id)}
-                        style={{
-                          padding: '6px 14px', borderRadius: 8, border: '1.5px solid',
-                          borderColor: mixedMethod2 === m.id ? '#0369a1' : '#bae6fd',
-                          background: mixedMethod2 === m.id ? '#0369a1' : '#fff',
-                          color: mixedMethod2 === m.id ? '#fff' : '#0369a1',
-                          cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600,
-                          display: 'flex', alignItems: 'center', gap: 4,
-                          transition: 'all .15s',
-                        }}>
-                        {m.icon} {m.label}
-                      </button>
-                    ))}
-                  </div>
-                  <input className="input" type="number" min="0" placeholder="Сумма в $"
-                    style={{ marginBottom: 0 }}
-                    value={paymentUSD} onChange={e => setPaymentUSD(e.target.value)} />
-                </div>
+                ))}
 
                 {/* Итого */}
                 {(paymentUZS || paymentUSD) && (
-                  <div style={{ padding: '10px 14px', background: '#e0f2fe', borderTop: '1px solid #bae6fd', fontSize: 12, color: '#0369a1', fontWeight: 700 }}>
+                  <div style={{ padding: '10px 14px', background: '#e0f2fe', borderTop: '1px solid #bae6fd', fontSize: 13, color: '#0369a1', fontWeight: 700 }}>
                     {[
-                      paymentUZS && `${Number(paymentUZS).toLocaleString('ru-RU')} сум`,
-                      paymentUSD && `${Number(paymentUSD).toLocaleString('ru-RU')} $`,
+                      paymentUZS && `${Number(paymentUZS).toLocaleString('ru-RU')} (${MIXED_PART_METHODS.find(m => m.id === mixedMethod1)?.label || ''})`,
+                      paymentUSD && `${Number(paymentUSD).toLocaleString('ru-RU')} (${MIXED_PART_METHODS.find(m => m.id === mixedMethod2)?.label || ''})`,
                     ].filter(Boolean).join(' + ')}
-                    {paymentUZS && paymentUSD && rate && (
-                      <span style={{ fontWeight: 400, marginLeft: 8, opacity: 0.8 }}>
-                        ≈ {(Number(paymentUSD) + Number(paymentUZS) / Number(rate)).toFixed(0)} $ итого
-                      </span>
-                    )}
                   </div>
                 )}
               </div>
