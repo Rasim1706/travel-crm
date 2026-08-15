@@ -568,7 +568,7 @@ export default function SaleForm({ session }) {
           {/* Комиссия — авто из amount−netto, редактируемая */}
           <div className="form-group">
             <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              Комиссия агентства ($)
+              Комиссия агентства ({currSymbol})
               {amount && netto && (
                 <span style={{ fontSize: 11, color: '#6366f1', fontWeight: 500, background: '#eef2ff', borderRadius: 6, padding: '1px 7px' }}>
                   авто
@@ -579,9 +579,9 @@ export default function SaleForm({ session }) {
               value={commission} onChange={e => setCommission(e.target.value)} />
           </div>
 
-          {/* Скидка — всегда в $ */}
+          {/* Скидка */}
           <div className="form-group">
-            <label className="label">Скидка клиенту ($)</label>
+            <label className="label">Скидка клиенту ({currSymbol})</label>
             <input className="input" type="number" min="0" placeholder="0"
               value={discount} onChange={e => setDiscount(e.target.value)} />
           </div>
@@ -597,10 +597,10 @@ export default function SaleForm({ session }) {
                 Чистая комиссия
               </div>
               <div style={{ fontSize: 24, fontWeight: 800, color: balance >= 0 ? '#15803d' : '#dc2626' }}>
-                {balance.toLocaleString('ru-RU')} $
+                {balance.toLocaleString('ru-RU')} {currSymbol}
               </div>
               <div style={{ fontSize: 11, color: balance >= 0 ? '#16a34a' : '#ef4444', marginTop: 4 }}>
-                {Number(commission).toLocaleString('ru-RU')} $ − {(Number(discount) || 0).toLocaleString('ru-RU')} $ скидка
+                {Number(commission).toLocaleString('ru-RU')} {currSymbol} − {(Number(discount) || 0).toLocaleString('ru-RU')} {currSymbol} скидка
               </div>
             </div>
           )}
