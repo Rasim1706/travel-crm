@@ -201,21 +201,22 @@ export default function Dashboard() {
            (bd && !isNaN(bd) && bd >= from && bd <= to)
   })
 
-  let totalContracts = 0, totalSales = 0, totalPrepayment = 0, totalDebt = 0
+  let totalContracts = 0, totalSales = 0, totalCommission = 0, totalPrepayment = 0, totalDebt = 0
   let hasPrepayment = false
-  const commissionByCurrency = {}
   filtered.forEach(s => {
     totalContracts++
     totalSales += s.salesCount
     if (s.balance != null) {
       const cur = s.commissionCurrency || s.currency || 'USD'
-      commissionByCurrency[cur] = (commissionByCurrency[cur] || 0) + s.balance
+      if (cur === 'UZS' && s.rate) {
+        totalCommission += s.balance / s.rate
+      } else {
+        totalCommission += s.balance
+      }
     }
     if (s.prepayment != null) { totalPrepayment += s.prepayment; hasPrepayment = true }
     if (s.debt       != null) totalDebt += s.debt
   })
-  const CURR_SYM = { USD: '$', EUR: '€', UZS: 'сум' }
-  const commissionEntries = Object.entries(commissionByCurrency).filter(([, v]) => v !== 0)
 
   // Напоминания: кому позвонить
   const threeMonthsAgo = new Date()
@@ -501,13 +502,7 @@ export default function Dashboard() {
           <div className="stat-label">👥 Туристы</div>
         </div>
         <div className="stat-card" style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1.5px solid #86efac' }}>
-          {commissionEntries.length === 0 ? (
-            <div className="stat-number" style={{ color: '#15803d', fontSize: 20 }}>0 $</div>
-          ) : commissionEntries.map(([cur, val]) => (
-            <div key={cur} className="stat-number" style={{ color: '#15803d', fontSize: commissionEntries.length > 1 ? 16 : 20 }}>
-              {val.toLocaleString('ru-RU')} {CURR_SYM[cur] || cur}
-            </div>
-          ))}
+          <div className="stat-number" style={{ color: '#15803d', fontSize: 20 }}>{Math.round(totalCommission).toLocaleString('ru-RU')} $</div>
           <div className="stat-label">💵 Комиссия</div>
         </div>
         {hasPrepayment && (
