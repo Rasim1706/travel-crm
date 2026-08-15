@@ -8,9 +8,12 @@ const DEFAULT_SOURCES = [
   'Сайт', 'Google', 'Повторный клиент',
 ]
 
-function ListManager({ icon, items, onAdd, onDelete, placeholder }) {
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
+function ListManager({ icon, items, onAdd, onDelete, onRename, placeholder }) {
+  const [input,      setInput]      = useState('')
+  const [loading,    setLoading]    = useState(false)
+  const [editingItem, setEditingItem] = useState(null)
+  const [editValue,  setEditValue]  = useState('')
+  const [renaming,   setRenaming]   = useState(false)
 
   async function handleAdd() {
     const name = input.trim()
@@ -19,6 +22,26 @@ function ListManager({ icon, items, onAdd, onDelete, placeholder }) {
     await onAdd(name)
     setInput('')
     setLoading(false)
+  }
+
+  function startEdit(item) {
+    setEditingItem(item)
+    setEditValue(item)
+  }
+
+  function cancelEdit() {
+    setEditingItem(null)
+    setEditValue('')
+  }
+
+  async function commitEdit(item) {
+    const newName = editValue.trim()
+    if (!newName || newName === item) { cancelEdit(); return }
+    setRenaming(true)
+    await onRename(item, newName)
+    setRenaming(false)
+    setEditingItem(null)
+    setEditValue('')
   }
 
   return (
@@ -41,17 +64,51 @@ function ListManager({ icon, items, onAdd, onDelete, placeholder }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {items.map(item => (
             <div key={item} style={{
-              display: 'flex', alignItems: 'center', padding: '10px 12px',
+              display: 'flex', alignItems: 'center', padding: '8px 12px',
               background: '#f8fafc', borderRadius: 10, border: '1px solid var(--border)',
             }}>
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{item}</span>
-              <button onClick={() => onDelete(item)} style={{
-                background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1',
-                fontSize: 20, lineHeight: 1, padding: '0 4px', borderRadius: 6, transition: 'color .15s',
-              }}
-                onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                onMouseLeave={e => e.currentTarget.style.color = '#cbd5e1'}
-                title="Удалить">×</button>
+              {editingItem === item ? (
+                <>
+                  <input
+                    autoFocus
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') commitEdit(item)
+                      if (e.key === 'Escape') cancelEdit()
+                    }}
+                    onBlur={() => commitEdit(item)}
+                    disabled={renaming}
+                    style={{
+                      flex: 1, border: '1.5px solid #6366f1', borderRadius: 7,
+                      padding: '4px 8px', fontSize: 14, fontWeight: 500,
+                      outline: 'none', background: '#fff',
+                    }}
+                  />
+                  <button onClick={cancelEdit} style={{
+                    background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8',
+                    fontSize: 18, padding: '0 6px', marginLeft: 4,
+                  }} title="Отмена">✕</button>
+                </>
+              ) : (
+                <>
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{item}</span>
+                  <button onClick={() => startEdit(item)} style={{
+                    background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1',
+                    fontSize: 15, padding: '0 5px', borderRadius: 6, transition: 'color .15s',
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#6366f1'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#cbd5e1'}
+                    title="Переименовать">✏️</button>
+                  <button onClick={() => onDelete(item)} style={{
+                    background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1',
+                    fontSize: 20, lineHeight: 1, padding: '0 4px', borderRadius: 6, transition: 'color .15s',
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                    onMouseLeave={e => e.currentTarget.style.color = '#cbd5e1'}
+                    title="Удалить">×</button>
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -470,6 +527,11 @@ export default function Settings({ session }) {
     const r = await api.removeDirection(name)
     if (r.success) setDirections(r.items)
   }
+  async function renameDirection(oldName, newName) {
+    const r = await api.renameDirection(oldName, newName)
+    if (r.success) { setDirections(r.items); show(`✅ Переименовано`) }
+    else show('❌ ' + r.error, 'error')
+  }
   async function addHotel(name) {
     const r = await api.addHotel(name)
     if (r.success) { setHotels(r.items); show(`✅ «${name}» добавлен`) }
@@ -479,6 +541,11 @@ export default function Settings({ session }) {
     const r = await api.removeHotel(name)
     if (r.success) setHotels(r.items)
   }
+  async function renameHotel(oldName, newName) {
+    const r = await api.renameHotel(oldName, newName)
+    if (r.success) { setHotels(r.items); show(`✅ Переименовано`) }
+    else show('❌ ' + r.error, 'error')
+  }
   async function addSource(name) {
     const r = await api.addSource(name)
     if (r.success) { setSources(r.items); show(`✅ «${name}» добавлен`) }
@@ -487,6 +554,11 @@ export default function Settings({ session }) {
   async function deleteSource(name) {
     const r = await api.removeSource(name)
     if (r.success) setSources(r.items)
+  }
+  async function renameSource(oldName, newName) {
+    const r = await api.renameSource(oldName, newName)
+    if (r.success) { setSources(r.items); show(`✅ Переименовано`) }
+    else show('❌ ' + r.error, 'error')
   }
   async function addDefaultSources() {
     const existing = new Set(sources.map(s => s.toLowerCase()))
@@ -545,7 +617,7 @@ export default function Settings({ session }) {
           <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
             Направления отображаются в форме добавления продажи как выпадающий список.
           </p>
-          <ListManager icon="🌍" items={directions} onAdd={addDirection} onDelete={deleteDirection}
+          <ListManager icon="🌍" items={directions} onAdd={addDirection} onDelete={deleteDirection} onRename={renameDirection}
             placeholder="Например: Турция, Египет, ОАЭ..." />
         </div>
       )}
@@ -561,7 +633,7 @@ export default function Settings({ session }) {
               ⚡ Добавить стандартные источники
             </button>
           )}
-          <ListManager icon="📣" items={sources} onAdd={addSource} onDelete={deleteSource}
+          <ListManager icon="📣" items={sources} onAdd={addSource} onDelete={deleteSource} onRename={renameSource}
             placeholder="Например: Instagram, Telegram..." />
         </div>
       )}
@@ -572,7 +644,7 @@ export default function Settings({ session }) {
           <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>
             160+ популярных отелей уже встроены в форму. Здесь добавляйте любые отели, которых нет в списке.
           </p>
-          <ListManager icon="🏨" items={hotels} onAdd={addHotel} onDelete={deleteHotel}
+          <ListManager icon="🏨" items={hotels} onAdd={addHotel} onDelete={deleteHotel} onRename={renameHotel}
             placeholder="Название отеля которого нет в списке..." />
         </div>
       )}

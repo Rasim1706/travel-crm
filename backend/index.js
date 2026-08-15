@@ -636,6 +636,43 @@ function makeListRouter(sheetName) {
         }
       } catch (e) { res.json({ success: false, error: e.message }); }
     },
+
+    async rename(req, res) {
+      try {
+        const spreadsheetId = sessionSpreadsheetId(req);
+        const agencyId      = req.session?.agencyId || 'default';
+        const isMaster      = spreadsheetId === MASTER_SPREADSHEET_ID;
+        const oldName       = decodeURIComponent(req.params.name);
+        const newName       = String(req.body.name || '').trim();
+        if (!newName) return res.json({ success: false, error: 'Пустое название' });
+        if (oldName === newName) return res.json({ success: false, error: 'Название не изменилось' });
+        const sheets = await getSheets();
+
+        if (isMaster) {
+          const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:B` });
+          const rows = r.data.values || [];
+          const idx = rows.findIndex(row => row[0] === oldName && (row[1] || 'default') === agencyId);
+          if (idx === -1) return res.json({ success: false, error: 'Не найдено' });
+          await sheets.spreadsheets.values.update({
+            spreadsheetId, range: `${sheetName}!A${idx + 2}`,
+            valueInputOption: 'RAW', requestBody: { values: [[newName]] },
+          });
+          const updated = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:B` });
+          const items = (updated.data.values || []).filter(row => (row[1] || 'default') === agencyId).map(row => row[0]).filter(Boolean);
+          return res.json({ success: true, items });
+        } else {
+          const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:A` });
+          const idx = (r.data.values || []).findIndex(row => row[0] === oldName);
+          if (idx === -1) return res.json({ success: false, error: 'Не найдено' });
+          await sheets.spreadsheets.values.update({
+            spreadsheetId, range: `${sheetName}!A${idx + 2}`,
+            valueInputOption: 'RAW', requestBody: { values: [[newName]] },
+          });
+          const updated = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A2:A` });
+          return res.json({ success: true, items: (updated.data.values || []).flat().filter(Boolean) });
+        }
+      } catch (e) { res.json({ success: false, error: e.message }); }
+    },
   };
 }
 
@@ -643,16 +680,19 @@ const directionsRouter = makeListRouter(DIRECTIONS_SHEET);
 app.get('/api/directions',          directionsRouter.getAll);
 app.post('/api/directions',         directionsRouter.add);
 app.delete('/api/directions/:name', directionsRouter.remove);
+app.put('/api/directions/:name',    directionsRouter.rename);
 
 const hotelsRouter = makeListRouter(HOTELS_SHEET);
 app.get('/api/hotels',          hotelsRouter.getAll);
 app.post('/api/hotels',         hotelsRouter.add);
 app.delete('/api/hotels/:name', hotelsRouter.remove);
+app.put('/api/hotels/:name',    hotelsRouter.rename);
 
 const sourcesRouter = makeListRouter(SOURCES_SHEET);
 app.get('/api/sources',          sourcesRouter.getAll);
 app.post('/api/sources',         sourcesRouter.add);
 app.delete('/api/sources/:name', sourcesRouter.remove);
+app.put('/api/sources/:name',    sourcesRouter.rename);
 
 // ════════════════════════════════════════════════════
 //  ПРОДАЖИ (в таблице агентства)
