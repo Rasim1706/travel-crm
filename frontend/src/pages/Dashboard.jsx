@@ -552,13 +552,17 @@ export default function Dashboard() {
         {filtered.length === 0
           ? <div className="empty"><div className="empty-icon">📭</div><p>Нет данных за выбранный период</p></div>
           : (() => {
+            const CSYM = { USD: '$', EUR: '€', UZS: 'сум' }
             const mgrMap = {}
             filtered.forEach(s => {
               if (!s.manager) return
-              if (!mgrMap[s.manager]) mgrMap[s.manager] = { contracts: 0, people: 0, balance: null, prepayment: null, debt: null }
+              if (!mgrMap[s.manager]) mgrMap[s.manager] = { contracts: 0, people: 0, balanceByCur: {}, prepayment: null, debt: null }
               const m = mgrMap[s.manager]
               m.contracts++; m.people += s.salesCount || 0
-              if (s.balance    != null) m.balance    = (m.balance    || 0) + s.balance
+              if (s.balance != null) {
+                const cur = s.commissionCurrency || s.currency || 'USD'
+                m.balanceByCur[cur] = (m.balanceByCur[cur] || 0) + s.balance
+              }
               if (s.prepayment != null) m.prepayment = (m.prepayment || 0) + s.prepayment
               if (s.debt       != null) m.debt       = (m.debt       || 0) + s.debt
             })
@@ -578,17 +582,29 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map(([name, m], i) => (
-                      <tr key={name}>
-                        <td><strong>{i + 1}</strong></td>
-                        <td style={{ fontWeight: 600 }}>{name}</td>
-                        <td style={{ textAlign: 'center' }}><span className="badge">{m.contracts}</span></td>
-                        <td style={{ textAlign: 'center' }}><span className="badge">{m.people}</span></td>
-                        <td>{m.balance == null ? <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span> : <span style={{ fontWeight: 700, fontSize: 13, color: m.balance >= 0 ? '#16a34a' : '#dc2626' }}>{m.balance.toLocaleString('ru-RU')}</span>}</td>
-                        {showFinance && <td style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>{m.prepayment != null ? m.prepayment.toLocaleString('ru-RU') : '—'}</td>}
-                        {showFinance && <td style={{ fontSize: 13, fontWeight: 600, color: m.debt > 0 ? '#ea580c' : '#16a34a' }}>{m.debt != null ? m.debt.toLocaleString('ru-RU') : '—'}</td>}
-                      </tr>
-                    ))}
+                    {rows.map(([name, m], i) => {
+                      const entries = Object.entries(m.balanceByCur).filter(([, v]) => v !== 0)
+                      return (
+                        <tr key={name}>
+                          <td><strong>{i + 1}</strong></td>
+                          <td style={{ fontWeight: 600 }}>{name}</td>
+                          <td style={{ textAlign: 'center' }}><span className="badge">{m.contracts}</span></td>
+                          <td style={{ textAlign: 'center' }}><span className="badge">{m.people}</span></td>
+                          <td>
+                            {entries.length === 0
+                              ? <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
+                              : entries.map(([cur, val]) => (
+                                <div key={cur} style={{ fontWeight: 700, fontSize: 13, color: val >= 0 ? '#16a34a' : '#dc2626', whiteSpace: 'nowrap' }}>
+                                  {val.toLocaleString('ru-RU')} {CSYM[cur] || cur}
+                                </div>
+                              ))
+                            }
+                          </td>
+                          {showFinance && <td style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>{m.prepayment != null ? m.prepayment.toLocaleString('ru-RU') : '—'}</td>}
+                          {showFinance && <td style={{ fontSize: 13, fontWeight: 600, color: m.debt > 0 ? '#ea580c' : '#16a34a' }}>{m.debt != null ? m.debt.toLocaleString('ru-RU') : '—'}</td>}
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
