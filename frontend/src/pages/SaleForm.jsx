@@ -180,6 +180,7 @@ export default function SaleForm({ session }) {
         netto: netto || undefined,
         prepayment: prepayment || undefined,
         commission: commission || undefined,
+        commissionCurrency: currency,
         discount: discount || undefined,
         dueDate: dueDate || undefined,
         paymentMethod: paymentMethod === 'mixed'

@@ -323,8 +323,9 @@ export default function Dashboard() {
       debt:           sale.debt           ?? '',
       dueDate:        sale.dueDate        || '',
       paymentMethod:  sale.paymentMethod  || '',
-      commission:     sale.commission     ?? '',
-      discount:       sale.discount       ?? '',
+      commission:         sale.commission         ?? '',
+      commissionCurrency: sale.commissionCurrency || sale.currency || 'USD',
+      discount:           sale.discount           ?? '',
     })
   }
 
@@ -351,8 +352,9 @@ export default function Dashboard() {
         debt:           d.debt       === '' ? '' : Number(d.debt),
         dueDate:        d.dueDate,
         paymentMethod:  d.paymentMethod,
-        commission:     d.commission === '' ? '' : Number(d.commission),
-        discount:       d.discount   === '' ? '' : Number(d.discount),
+        commission:         d.commission === '' ? '' : Number(d.commission),
+        commissionCurrency: d.commissionCurrency || d.currency || 'USD',
+        discount:           d.discount   === '' ? '' : Number(d.discount),
       }
       if (payload.commission !== '' && payload.discount !== '')
         payload.balance = Math.round((Number(payload.commission) - (Number(payload.discount) || 0)) * 100) / 100
@@ -843,13 +845,23 @@ export default function Dashboard() {
                 <input className="input" type="date" style={INP} value={editModalData.dueDate}
                   onChange={e => setEditModalData(d => ({ ...d, dueDate: e.target.value }))} /></div>
 
-              <div><label style={LBL}>💵 Комиссия ($)</label>
-                <input className="input" type="number" min="0" style={INP} value={editModalData.commission}
-                  onChange={e => setEditModalData(d => ({ ...d, commission: e.target.value }))} /></div>
+              <div>
+                <label style={LBL}>💵 Комиссия ({['USD','EUR','UZS'].includes(editModalData.commissionCurrency) ? { USD: '$', EUR: '€', UZS: 'сум' }[editModalData.commissionCurrency] : '$'})</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input className="input" type="number" min="0" style={{ ...INP, flex: 1 }} value={editModalData.commission}
+                    onChange={e => setEditModalData(d => ({ ...d, commission: e.target.value }))} />
+                  <select className="select" style={{ ...INP, width: 84 }} value={editModalData.commissionCurrency}
+                    onChange={e => setEditModalData(d => ({ ...d, commissionCurrency: e.target.value }))}>
+                    {['USD','EUR','UZS'].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
 
-              <div><label style={LBL}>🏷 Скидка ($)</label>
+              <div>
+                <label style={LBL}>🏷 Скидка ({['USD','EUR','UZS'].includes(editModalData.commissionCurrency) ? { USD: '$', EUR: '€', UZS: 'сум' }[editModalData.commissionCurrency] : '$'})</label>
                 <input className="input" type="number" min="0" style={INP} value={editModalData.discount}
-                  onChange={e => setEditModalData(d => ({ ...d, discount: e.target.value }))} /></div>
+                  onChange={e => setEditModalData(d => ({ ...d, discount: e.target.value }))} />
+              </div>
             </div>
 
             {/* Способ оплаты */}

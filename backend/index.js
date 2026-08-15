@@ -32,7 +32,7 @@ const SALE_HEADERS = [
   'Сумма','Валюта','Комиссия ($)','Скидка ($)','Остаток ($)',
   'Курс','Нетто','Предоплата','Долг клиента',
   'Способ оплаты','Сумма UZS','Сумма USD ($)',
-  'Дата вылета','Дата прилета','Срок оплаты остатка',
+  'Дата вылета','Дата прилета','Срок оплаты остатка','Валюта комиссии',
 ];
 
 function currentMonthSheet() {
@@ -702,7 +702,7 @@ app.post('/api/sales', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
   const spreadsheetId = sessionSpreadsheetId(req);
   try {
-    const { contractNumber, salesCount, bookingDate, clientName, direction, hotel, phone, source, amount, currency, commission, discount, rate, netto, prepayment, paymentMethod, paymentUZS, paymentUSD, departureDate, arrivalDate, dueDate } = req.body;
+    const { contractNumber, salesCount, bookingDate, clientName, direction, hotel, phone, source, amount, currency, commission, commissionCurrency, discount, rate, netto, prepayment, paymentMethod, paymentUZS, paymentUSD, departureDate, arrivalDate, dueDate } = req.body;
     const manager = req.session.role === 'manager' ? req.session.name : (req.body.manager || '');
     if (!contractNumber || !manager || !salesCount)
       return res.json({ success: false, error: 'Заполните обязательные поля' });
@@ -711,7 +711,7 @@ app.post('/api/sales', async (req, res) => {
     await ensureSheet(sheets, spreadsheetId, sheetName, SALE_HEADERS);
     const debt = (amount && prepayment) ? Math.round((Number(amount) - Number(prepayment)) * 100) / 100 : '';
     await sheets.spreadsheets.values.append({
-      spreadsheetId, range: `${sheetName}!A:Y`, valueInputOption: 'RAW',
+      spreadsheetId, range: `${sheetName}!A:Z`, valueInputOption: 'RAW',
       requestBody: { values: [[
         new Date().toISOString(), contractNumber.trim(), manager, Number(salesCount),
         bookingDate || '', clientName || '', direction || '', hotel || '', phone || '', source || '',
@@ -724,6 +724,7 @@ app.post('/api/sales', async (req, res) => {
         paymentUZS ? Number(paymentUZS) : '',
         paymentUSD ? Number(paymentUSD) : '',
         departureDate || '', arrivalDate || '', dueDate || '',
+        commissionCurrency || currency || '',
       ]] },
     });
     res.json({ success: true });
@@ -774,35 +775,36 @@ app.get('/api/sales', async (req, res) => {
     const titles = meta.data.sheets.map(s => s.properties.title).filter(isSalesSheet);
     const allRows = [];
     for (const title of titles) {
-      const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${title}!A2:Y` });
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${title}!A2:Z` });
       (r.data.values || []).forEach((row, i) => {
         allRows.push({
-          id            : `${title}|${i + 2}`,
-          date          : row[0]  || '',
-          contractNumber: row[1]  || '',
-          manager       : row[2]  || '',
-          salesCount    : Number(row[3])  || 0,
-          bookingDate   : row[4]  || '',
-          clientName    : row[5]  || '',
-          direction     : row[6]  || '',
-          hotel         : row[7]  || '',
-          phone         : row[8]  || '',
-          source        : row[9]  || '',
-          amount        : row[10] ? Number(row[10]) : null,
-          currency      : row[11] || '',
-          commission    : row[12] ? Number(row[12]) : null,
-          discount      : row[13] ? Number(row[13]) : null,
-          balance       : row[14] ? Number(row[14]) : null,
-          rate          : row[15] ? Number(row[15]) : null,
-          netto         : row[16] ? Number(row[16]) : null,
-          prepayment    : row[17] ? Number(row[17]) : null,
-          debt          : row[18] ? Number(row[18]) : null,
-          paymentMethod : row[19] || '',
-          paymentUZS    : row[20] ? Number(row[20]) : null,
-          paymentUSD    : row[21] ? Number(row[21]) : null,
-          departureDate : row[22] || '',
-          arrivalDate   : row[23] || '',
-          dueDate       : row[24] || '',
+          id                : `${title}|${i + 2}`,
+          date              : row[0]  || '',
+          contractNumber    : row[1]  || '',
+          manager           : row[2]  || '',
+          salesCount        : Number(row[3])  || 0,
+          bookingDate       : row[4]  || '',
+          clientName        : row[5]  || '',
+          direction         : row[6]  || '',
+          hotel             : row[7]  || '',
+          phone             : row[8]  || '',
+          source            : row[9]  || '',
+          amount            : row[10] ? Number(row[10]) : null,
+          currency          : row[11] || '',
+          commission        : row[12] ? Number(row[12]) : null,
+          discount          : row[13] ? Number(row[13]) : null,
+          balance           : row[14] ? Number(row[14]) : null,
+          rate              : row[15] ? Number(row[15]) : null,
+          netto             : row[16] ? Number(row[16]) : null,
+          prepayment        : row[17] ? Number(row[17]) : null,
+          debt              : row[18] ? Number(row[18]) : null,
+          paymentMethod     : row[19] || '',
+          paymentUZS        : row[20] ? Number(row[20]) : null,
+          paymentUSD        : row[21] ? Number(row[21]) : null,
+          departureDate     : row[22] || '',
+          arrivalDate       : row[23] || '',
+          dueDate           : row[24] || '',
+          commissionCurrency: row[25] || row[11] || '',
         });
       });
     }
@@ -843,9 +845,10 @@ app.put('/api/sales/:id', async (req, res) => {
       prepayment:     { col: 'R', type: 'num' },
       debt:           { col: 'S', type: 'num' },
       paymentMethod:  { col: 'T', type: 'str' },
-      departureDate:  { col: 'W', type: 'str' },
-      arrivalDate:    { col: 'X', type: 'str' },
-      dueDate:        { col: 'Y', type: 'str' },
+      departureDate:      { col: 'W', type: 'str' },
+      arrivalDate:        { col: 'X', type: 'str' },
+      dueDate:            { col: 'Y', type: 'str' },
+      commissionCurrency: { col: 'Z', type: 'str' },
     };
     const batchData = [];
     for (const [field, { col, type }] of Object.entries(UPDATABLE)) {
