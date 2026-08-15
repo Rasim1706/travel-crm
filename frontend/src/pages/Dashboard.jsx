@@ -201,15 +201,21 @@ export default function Dashboard() {
            (bd && !isNaN(bd) && bd >= from && bd <= to)
   })
 
-  let totalContracts = 0, totalSales = 0, totalCommission = 0, totalPrepayment = 0, totalDebt = 0
+  let totalContracts = 0, totalSales = 0, totalPrepayment = 0, totalDebt = 0
   let hasPrepayment = false
+  const commissionByCurrency = {}
   filtered.forEach(s => {
     totalContracts++
     totalSales += s.salesCount
-    if (s.balance    != null) totalCommission  += s.balance
+    if (s.balance != null) {
+      const cur = s.commissionCurrency || s.currency || 'USD'
+      commissionByCurrency[cur] = (commissionByCurrency[cur] || 0) + s.balance
+    }
     if (s.prepayment != null) { totalPrepayment += s.prepayment; hasPrepayment = true }
     if (s.debt       != null) totalDebt += s.debt
   })
+  const CURR_SYM = { USD: '$', EUR: '€', UZS: 'сум' }
+  const commissionEntries = Object.entries(commissionByCurrency).filter(([, v]) => v !== 0)
 
   // Напоминания: кому позвонить
   const threeMonthsAgo = new Date()
@@ -495,7 +501,13 @@ export default function Dashboard() {
           <div className="stat-label">👥 Туристы</div>
         </div>
         <div className="stat-card" style={{ background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', border: '1.5px solid #86efac' }}>
-          <div className="stat-number" style={{ color: '#15803d', fontSize: 20 }}>{totalCommission.toLocaleString('ru-RU')} $</div>
+          {commissionEntries.length === 0 ? (
+            <div className="stat-number" style={{ color: '#15803d', fontSize: 20 }}>0 $</div>
+          ) : commissionEntries.map(([cur, val]) => (
+            <div key={cur} className="stat-number" style={{ color: '#15803d', fontSize: commissionEntries.length > 1 ? 16 : 20 }}>
+              {val.toLocaleString('ru-RU')} {CURR_SYM[cur] || cur}
+            </div>
+          ))}
           <div className="stat-label">💵 Комиссия</div>
         </div>
         {hasPrepayment && (
@@ -565,7 +577,7 @@ export default function Dashboard() {
                       <th>#</th><th>Менеджер</th>
                       <th style={{ textAlign: 'center' }}>Заявок</th>
                       <th style={{ textAlign: 'center' }}>Туристов</th>
-                      <th>Комиссия ($)</th>
+                      <th>Комиссия</th>
                       {showFinance && <th>Предоплата</th>}
                       {showFinance && <th>Долг</th>}
                     </tr>
@@ -577,7 +589,7 @@ export default function Dashboard() {
                         <td style={{ fontWeight: 600 }}>{name}</td>
                         <td style={{ textAlign: 'center' }}><span className="badge">{m.contracts}</span></td>
                         <td style={{ textAlign: 'center' }}><span className="badge">{m.people}</span></td>
-                        <td>{m.balance == null ? <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span> : <span style={{ fontWeight: 700, fontSize: 13, color: m.balance >= 0 ? '#16a34a' : '#dc2626' }}>{m.balance.toLocaleString('ru-RU')} $</span>}</td>
+                        <td>{m.balance == null ? <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span> : <span style={{ fontWeight: 700, fontSize: 13, color: m.balance >= 0 ? '#16a34a' : '#dc2626' }}>{m.balance.toLocaleString('ru-RU')}</span>}</td>
                         {showFinance && <td style={{ fontSize: 13, fontWeight: 600, color: '#1d4ed8' }}>{m.prepayment != null ? m.prepayment.toLocaleString('ru-RU') : '—'}</td>}
                         {showFinance && <td style={{ fontSize: 13, fontWeight: 600, color: m.debt > 0 ? '#ea580c' : '#16a34a' }}>{m.debt != null ? m.debt.toLocaleString('ru-RU') : '—'}</td>}
                       </tr>
