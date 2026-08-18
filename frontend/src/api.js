@@ -10,7 +10,18 @@ async function call(url, options = {}) {
     },
     ...options,
   })
-  return res.json()
+  if (res.status === 401) {
+    sessionStorage.removeItem('crm_token')
+    window.location.href = '/'
+    return {}
+  }
+  const data = await res.json()
+  if (data?.error === 'Не авторизован' || data?.error === 'Unauthorized') {
+    sessionStorage.removeItem('crm_token')
+    window.location.href = '/'
+    return {}
+  }
+  return data
 }
 
 export const api = {
