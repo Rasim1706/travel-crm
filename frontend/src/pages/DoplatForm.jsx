@@ -43,15 +43,13 @@ export default function DoplatForm({ session }) {
     return payments.filter(p => p.contractNumber === sale.contractNumber)
   }
 
-  function paidTotal(sale) {
-    const doplats = saleDoplats(sale)
-    const dopSum  = doplats.reduce((acc, p) => acc + (p.amount || 0), 0)
-    return (sale.prepayment || 0) + dopSum
+  function dopTotal(sale) {
+    return saleDoplats(sale).reduce((acc, p) => acc + (p.amount || 0), 0)
   }
 
   function remaining(sale) {
-    const total = sale.amount || 0
-    return total - paidTotal(sale)
+    const baseDebt = sale.debt !== null && sale.debt !== undefined ? sale.debt : 0
+    return baseDebt - dopTotal(sale)
   }
 
   async function submit(e) {
@@ -84,9 +82,11 @@ export default function DoplatForm({ session }) {
   }
   const LBL = { display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.05em' }
 
-  const doplats = found ? saleDoplats(found) : []
-  const rem     = found ? remaining(found) : null
-  const sym     = found ? (CSYM[found.currency] || found.currency) : ''
+  const doplats  = found ? saleDoplats(found) : []
+  const dopSum   = found ? dopTotal(found) : 0
+  const rem      = found ? remaining(found) : null
+  const sym      = found ? (CSYM[found.currency] || found.currency) : ''
+  const baseDebt = found ? (found.debt !== null && found.debt !== undefined ? found.debt : 0) : 0
 
   return (
     <div style={{ maxWidth: 560, margin: '0 auto' }}>
@@ -122,13 +122,15 @@ export default function DoplatForm({ session }) {
               {found.clientName || '—'} · {found.direction || '—'}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: 13 }}>
-              <Row label="Сумма тура"   value={found.amount ? `${found.amount.toLocaleString('ru-RU')} ${sym}` : '—'} />
-              <Row label="Предоплата"   value={found.prepayment ? `${found.prepayment.toLocaleString('ru-RU')} ${sym}` : '—'} />
+              <Row label="Сумма тура"    value={found.amount ? `${found.amount.toLocaleString('ru-RU')} ${sym}` : '—'} />
+              <Row label="Долг по договору" value={`${baseDebt.toLocaleString('ru-RU')} ${sym}`} />
               {doplats.map((p, i) => (
                 <Row key={i} label={`Доплата ${i + 1} (${p.date})`} value={`${(p.amount || 0).toLocaleString('ru-RU')} ${CSYM[p.currency] || p.currency}`} />
               ))}
-              <Row label="Оплачено"  value={`${paidTotal(found).toLocaleString('ru-RU')} ${sym}`} color="#16a34a" bold />
-              <Row label="Остаток"   value={`${rem.toLocaleString('ru-RU')} ${sym}`}              color={rem > 0 ? '#ea580c' : '#16a34a'} bold />
+              {doplats.length > 0 && (
+                <Row label="Внесено доплат" value={`${dopSum.toLocaleString('ru-RU')} ${sym}`} color="#16a34a" bold />
+              )}
+              <Row label="Остаток к оплате" value={`${rem.toLocaleString('ru-RU')} ${sym}`} color={rem > 0 ? '#ea580c' : '#16a34a'} bold />
             </div>
           </div>
         )}
