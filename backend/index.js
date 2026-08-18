@@ -889,6 +889,49 @@ app.delete('/api/sales/:id', async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════
+//  ДОПЛАТЫ (дополнительные платежи)
+// ════════════════════════════════════════════════════
+const PAYMENTS_SHEET   = 'Доплаты';
+const PAYMENTS_HEADERS = ['Дата', 'Номер договора', 'Сумма', 'Валюта', 'Примечание'];
+
+app.get('/api/payments', async (req, res) => {
+  if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
+  const spreadsheetId = sessionSpreadsheetId(req);
+  try {
+    const sheets = await getSheets();
+    await ensureSheet(sheets, spreadsheetId, PAYMENTS_SHEET, PAYMENTS_HEADERS);
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${PAYMENTS_SHEET}!A2:E` });
+    const payments = (r.data.values || []).map((row, i) => ({
+      id:             i + 2,
+      date:           row[0] || '',
+      contractNumber: row[1] || '',
+      amount:         row[2] ? Number(row[2]) : null,
+      currency:       row[3] || '',
+      note:           row[4] || '',
+    }));
+    res.json({ success: true, payments });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+app.post('/api/payments', async (req, res) => {
+  if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
+  const spreadsheetId = sessionSpreadsheetId(req);
+  const { date, contractNumber, amount, currency, note } = req.body;
+  if (!contractNumber || !amount || !date) return res.json({ success: false, error: 'Заполните обязательные поля' });
+  try {
+    const sheets = await getSheets();
+    await ensureSheet(sheets, spreadsheetId, PAYMENTS_SHEET, PAYMENTS_HEADERS);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `${PAYMENTS_SHEET}!A:E`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[date, String(contractNumber), Number(amount), currency || 'USD', note || '']] },
+    });
+    res.json({ success: true });
+  } catch (e) { res.json({ success: false, error: e.message }); }
+});
+
+// ════════════════════════════════════════════════════
 //  DEV ADMIN (суперадмин разработчика)
 // ════════════════════════════════════════════════════
 

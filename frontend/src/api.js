@@ -52,6 +52,10 @@ export const api = {
   updateSale:  (id, data)          => call(`/api/sales/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteSale:  (id)                => call(`/api/sales/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
+  // Payments (доплаты)
+  getPayments: ()     => call('/api/payments'),
+  addPayment:  (data) => call('/api/payments', { method: 'POST', body: JSON.stringify(data) }),
+
   // Reference lists
   getSources:       ()     => call('/api/sources'),
   addSource:        (name) => call('/api/sources',    { method: 'POST',   body: JSON.stringify({ name }) }),

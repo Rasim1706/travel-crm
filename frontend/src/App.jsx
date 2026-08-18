@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import Login     from './pages/Login'
-import Register  from './pages/Register'
-import DevAdmin  from './pages/DevAdmin'
-import SaleForm  from './pages/SaleForm'
-import Dashboard from './pages/Dashboard'
-import Clients   from './pages/Clients'
-import Settings  from './pages/Settings'
-import Finances  from './pages/Finances'
+import Login       from './pages/Login'
+import Register    from './pages/Register'
+import DevAdmin    from './pages/DevAdmin'
+import SaleForm    from './pages/SaleForm'
+import DoplatForm  from './pages/DoplatForm'
+import Dashboard   from './pages/Dashboard'
+import Clients     from './pages/Clients'
+import Settings    from './pages/Settings'
+import Finances    from './pages/Finances'
 
 // Если URL начинается с /dev — показываем dev-панель
 if (window.location.pathname.startsWith('/dev')) {
@@ -147,10 +148,11 @@ export default function App() {
     return <DevAdmin />
   }
 
-  const [session,  setSession]  = useState(readSession)
-  const [active,   setActive]   = useState('form')
-  const [dashKey,  setDashKey]  = useState(0)
-  const [authPage, setAuthPage] = useState('login')
+  const [session,   setSession]   = useState(readSession)
+  const [active,    setActive]    = useState('form')
+  const [formMode,  setFormMode]  = useState('sale') // 'sale' | 'doplat'
+  const [dashKey,   setDashKey]   = useState(0)
+  const [authPage,  setAuthPage]  = useState('login')
 
   function handleLogin(sess) {
     sessionStorage.setItem('crm_agency_id',   sess.agencyId || 'default')
@@ -210,7 +212,28 @@ export default function App() {
       </nav>
 
       <main className={`main${active === 'dash' ? ' main--wide' : ''}`}>
-        {active === 'form'     && <SaleForm  session={session} />}
+        {active === 'form' && (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 24, background: 'var(--card)', borderRadius: 14, padding: 6, width: 'fit-content', border: '1px solid var(--border)' }}>
+              {[['sale', '📝 Продажа'], ['doplat', '💳 Доплата']].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => setFormMode(mode)}
+                  style={{
+                    padding: '8px 22px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                    fontWeight: 700, fontSize: 14, fontFamily: 'inherit', transition: 'all .15s',
+                    background: formMode === mode ? 'linear-gradient(135deg,#3b82f6,#2563eb)' : 'transparent',
+                    color: formMode === mode ? '#fff' : 'var(--muted)',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {formMode === 'sale'   && <SaleForm   session={session} />}
+            {formMode === 'doplat' && <DoplatForm session={session} />}
+          </>
+        )}
         {active === 'dash'     && <Dashboard key={dashKey} session={session} />}
         {active === 'finances' && <Finances />}
         {active === 'clients'  && <Clients />}
