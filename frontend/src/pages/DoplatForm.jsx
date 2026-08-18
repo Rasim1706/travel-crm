@@ -19,16 +19,14 @@ export default function DoplatForm({ session }) {
   const [err,      setErr]      = useState('')
 
   useEffect(() => {
-    Promise.all([api.getSales(), api.getPayments()]).then(([sr, pr]) => {
-      if (sr.sales)    setSales(sr.sales)
-      if (pr.payments) setPayments(pr.payments)
-    })
+    api.getSales().then(sr => { if (sr.sales) setSales(sr.sales) }).catch(() => {})
+    api.getPayments().then(pr => { if (pr.payments) setPayments(pr.payments) }).catch(() => {})
   }, [])
 
   function search() {
     const q = query.trim()
     if (!q) return
-    const sale = sales.find(s => s.contractNumber === q)
+    const sale = sales.find(s => String(s.contractNumber).trim() === q)
     if (sale) {
       setFound(sale)
       setNotFound(false)
