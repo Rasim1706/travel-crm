@@ -151,7 +151,8 @@ function formatDateTime(iso) {
 const LBL = { fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em' }
 const INP = { marginBottom: 0 }
 
-export default function Dashboard() {
+export default function Dashboard({ session }) {
+  const isAdmin = session?.role === 'admin'
   const { monday, sunday } = getWeekBounds()
   const now = new Date()
   const todayStart = new Date(now); todayStart.setHours(0,0,0,0)
@@ -752,6 +753,7 @@ export default function Dashboard() {
                         <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)', fontSize: 12 }}>{s.manager || '—'}</td>
 
                         <td>
+                          {isAdmin && (
                           <div style={{ display: 'flex', gap: 4 }}>
                             <button onClick={() => openEditModal(s)}
                               style={{ background: '#f0f4ff', border: '1px solid #c7d2fe', borderRadius: 7, padding: '5px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 700, color: '#4338ca', whiteSpace: 'nowrap' }}>
@@ -762,6 +764,7 @@ export default function Dashboard() {
                               🗑
                             </button>
                           </div>
+                          )}
                         </td>
                       </tr>
                     )
