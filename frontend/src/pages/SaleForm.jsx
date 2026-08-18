@@ -95,6 +95,8 @@ export default function SaleForm({ session }) {
   const [bookingDate,   setBookingDate]   = useState(today())
   const [departureDate, setDepartureDate] = useState('')
   const [arrivalDate,   setArrivalDate]   = useState('')
+  const [operator,      setOperator]      = useState('')
+  const [operatorRef,   setOperatorRef]   = useState('')
 
   // Шаг 3 — Договор (manager locked for managers)
   const [manager,        setManager]        = useState(isManager ? session.name : '')
@@ -173,6 +175,8 @@ export default function SaleForm({ session }) {
       const res = await api.addSale({
         clientName, phone, source,
         direction, hotel, bookingDate,
+        operator: operator || undefined,
+        operatorRef: operatorRef || undefined,
         manager: effectiveManager, contractNumber, salesCount,
         amount: amount || undefined,
         currency,
@@ -196,7 +200,7 @@ export default function SaleForm({ session }) {
         show('✅ Запись сохранена!')
         setStep(1)
         setClientName(''); setPhone(''); setSource('')
-        setDirection(''); setHotel(''); setBookingDate(today())
+        setDirection(''); setHotel(''); setBookingDate(today()); setOperator(''); setOperatorRef('')
         if (!isManager) setManager('')
         setContractNumber(''); setSalesCount(1)
         setAmount(''); setRate(''); setNetto(''); setPrepayment('')
@@ -322,6 +326,19 @@ export default function SaleForm({ session }) {
               <label className="label">🛬 Дата прилёта</label>
               <input className="input" type="date"
                 value={arrivalDate} onChange={e => setArrivalDate(e.target.value)} />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="label">🏢 Оператор</label>
+              <input className="input" type="text" placeholder="Anex Tour, Coral Travel..."
+                value={operator} onChange={e => setOperator(e.target.value)} />
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="label">📄 № заявки оператора</label>
+              <input className="input" type="text" placeholder="OP-123456"
+                value={operatorRef} onChange={e => setOperatorRef(e.target.value)} />
             </div>
           </div>
         </div>

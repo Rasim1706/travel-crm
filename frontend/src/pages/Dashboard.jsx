@@ -333,6 +333,8 @@ export default function Dashboard() {
       commission:         sale.commission         ?? '',
       commissionCurrency: sale.commissionCurrency || sale.currency || 'USD',
       discount:           sale.discount           ?? '',
+      operator:           sale.operator           || '',
+      operatorRef:        sale.operatorRef        || '',
     })
   }
 
@@ -362,6 +364,8 @@ export default function Dashboard() {
         commission:         d.commission === '' ? '' : Number(d.commission),
         commissionCurrency: d.commissionCurrency || d.currency || 'USD',
         discount:           d.discount   === '' ? '' : Number(d.discount),
+        operator:           d.operator    || '',
+        operatorRef:        d.operatorRef || '',
       }
       if (payload.commission !== '' && payload.discount !== '')
         payload.balance = Math.round((Number(payload.commission) - (Number(payload.discount) || 0)) * 100) / 100
@@ -843,6 +847,16 @@ export default function Dashboard() {
               <div><label style={LBL}>🛬 Дата прилёта</label>
                 <input className="input" type="date" style={INP} value={editModalData.arrivalDate}
                   onChange={e => setEditModalData(d => ({ ...d, arrivalDate: e.target.value }))} /></div>
+
+              <div><label style={LBL}>🏢 Оператор</label>
+                <input className="input" style={INP} placeholder="Anex Tour, Coral Travel..."
+                  value={editModalData.operator}
+                  onChange={e => setEditModalData(d => ({ ...d, operator: e.target.value }))} /></div>
+
+              <div><label style={LBL}>📄 № заявки оператора</label>
+                <input className="input" style={INP} placeholder="OP-123456"
+                  value={editModalData.operatorRef}
+                  onChange={e => setEditModalData(d => ({ ...d, operatorRef: e.target.value }))} /></div>
 
               <div>
                 <label style={LBL}>💰 Сумма</label>

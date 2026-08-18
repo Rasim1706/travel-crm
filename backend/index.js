@@ -33,6 +33,7 @@ const SALE_HEADERS = [
   'Курс','Нетто','Предоплата','Долг клиента',
   'Способ оплаты','Сумма UZS','Сумма USD ($)',
   'Дата вылета','Дата прилета','Срок оплаты остатка','Валюта комиссии',
+  'Оператор','№ заявки оператора',
 ];
 
 function currentMonthSheet() {
@@ -702,7 +703,7 @@ app.post('/api/sales', async (req, res) => {
   if (!req.session) return res.json({ success: false, error: 'Не авторизован' });
   const spreadsheetId = sessionSpreadsheetId(req);
   try {
-    const { contractNumber, salesCount, bookingDate, clientName, direction, hotel, phone, source, amount, currency, commission, commissionCurrency, discount, rate, netto, prepayment, paymentMethod, paymentUZS, paymentUSD, departureDate, arrivalDate, dueDate } = req.body;
+    const { contractNumber, salesCount, bookingDate, clientName, direction, hotel, phone, source, amount, currency, commission, commissionCurrency, discount, rate, netto, prepayment, paymentMethod, paymentUZS, paymentUSD, departureDate, arrivalDate, dueDate, operator, operatorRef } = req.body;
     const manager = req.session.role === 'manager' ? req.session.name : (req.body.manager || '');
     if (!contractNumber || !manager || !salesCount)
       return res.json({ success: false, error: 'Заполните обязательные поля' });
@@ -711,7 +712,7 @@ app.post('/api/sales', async (req, res) => {
     await ensureSheet(sheets, spreadsheetId, sheetName, SALE_HEADERS);
     const debt = (amount && prepayment) ? Math.round((Number(amount) - Number(prepayment)) * 100) / 100 : '';
     await sheets.spreadsheets.values.append({
-      spreadsheetId, range: `${sheetName}!A:Z`, valueInputOption: 'RAW',
+      spreadsheetId, range: `${sheetName}!A:AB`, valueInputOption: 'RAW',
       requestBody: { values: [[
         new Date().toISOString(), contractNumber.trim(), manager, Number(salesCount),
         bookingDate || '', clientName || '', direction || '', hotel || '', phone || '', source || '',
@@ -725,6 +726,7 @@ app.post('/api/sales', async (req, res) => {
         paymentUSD ? Number(paymentUSD) : '',
         departureDate || '', arrivalDate || '', dueDate || '',
         commissionCurrency || currency || '',
+        operator || '', operatorRef || '',
       ]] },
     });
     res.json({ success: true });
@@ -775,7 +777,7 @@ app.get('/api/sales', async (req, res) => {
     const titles = meta.data.sheets.map(s => s.properties.title).filter(isSalesSheet);
     const allRows = [];
     for (const title of titles) {
-      const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${title}!A2:Z` });
+      const r = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${title}!A2:AB` });
       (r.data.values || []).forEach((row, i) => {
         allRows.push({
           id                : `${title}|${i + 2}`,
@@ -805,6 +807,8 @@ app.get('/api/sales', async (req, res) => {
           arrivalDate       : row[23] || '',
           dueDate           : row[24] || '',
           commissionCurrency: row[25] || row[11] || '',
+          operator:           row[26] || '',
+          operatorRef:        row[27] || '',
         });
       });
     }
@@ -848,7 +852,9 @@ app.put('/api/sales/:id', async (req, res) => {
       departureDate:      { col: 'W', type: 'str' },
       arrivalDate:        { col: 'X', type: 'str' },
       dueDate:            { col: 'Y', type: 'str' },
-      commissionCurrency: { col: 'Z', type: 'str' },
+      commissionCurrency: { col: 'Z',  type: 'str' },
+      operator:           { col: 'AA', type: 'str' },
+      operatorRef:        { col: 'AB', type: 'str' },
     };
     const batchData = [];
     for (const [field, { col, type }] of Object.entries(UPDATABLE)) {
