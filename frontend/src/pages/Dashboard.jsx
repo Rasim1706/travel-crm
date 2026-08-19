@@ -158,8 +158,9 @@ export default function Dashboard({ session }) {
   const todayStart = new Date(now); todayStart.setHours(0,0,0,0)
   const in20days   = new Date(todayStart); in20days.setDate(todayStart.getDate() + 20)
 
-  const [dateFrom,  setDateFrom]  = useState(toInputDate(monday))
-  const [dateTo,    setDateTo]    = useState(toInputDate(sunday))
+  const [dateFrom,      setDateFrom]      = useState(toInputDate(monday))
+  const [dateTo,        setDateTo]        = useState(toInputDate(sunday))
+  const [managerFilter, setManagerFilter] = useState('all')
   const [pieYear,   setPieYear]   = useState(now.getFullYear())
   const [pieMonth,  setPieMonth]  = useState(now.getMonth())
   const [sales,     setSales]     = useState([])
@@ -195,11 +196,13 @@ export default function Dashboard({ session }) {
 
   const from = new Date(dateFrom + 'T00:00:00')
   const to   = new Date(dateTo   + 'T23:59:59')
+  const allManagers = [...new Set(sales.map(s => s.manager).filter(Boolean))].sort()
   const filtered = sales.filter(s => {
     const d  = new Date(s.date)
     const bd = s.bookingDate ? new Date(s.bookingDate) : null
-    return (!isNaN(d) && d >= from && d <= to) ||
-           (bd && !isNaN(bd) && bd >= from && bd <= to)
+    const inDate = (!isNaN(d) && d >= from && d <= to) || (bd && !isNaN(bd) && bd >= from && bd <= to)
+    const inMgr  = !isAdmin || managerFilter === 'all' || s.manager === managerFilter
+    return inDate && inMgr
   })
 
   let totalContracts = 0, totalSales = 0, totalCommission = 0, totalPrepayment = 0, totalDebt = 0
@@ -489,6 +492,15 @@ export default function Dashboard({ session }) {
             <label className="label">По</label>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
           </div>
+          {isAdmin && (
+            <div style={{ flex: 1, minWidth: 150 }}>
+              <label className="label">👤 Менеджер</label>
+              <select className="select" value={managerFilter} onChange={e => setManagerFilter(e.target.value)}>
+                <option value="all">Все менеджеры</option>
+                {allManagers.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          )}
           <button className="btn" style={{ width: 'auto', padding: '11px 16px', flexShrink: 0 }}
             onClick={() => { setDateFrom(toInputDate(monday)); setDateTo(toInputDate(sunday)) }}>
             Эта неделя
