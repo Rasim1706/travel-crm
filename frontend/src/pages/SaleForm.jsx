@@ -74,7 +74,7 @@ function StepBar({ current }) {
   )
 }
 
-export default function SaleForm({ session }) {
+export default function SaleForm({ session, onSaved }) {
   const isManager = session?.role === 'manager'
   const [step, setStep] = useState(1)
 
@@ -198,6 +198,7 @@ export default function SaleForm({ session }) {
       if (res.success) {
         setSubmitError('')
         show('✅ Запись сохранена!')
+        onSaved && onSaved()
         setStep(1)
         setClientName(''); setPhone(''); setSource('')
         setDirection(''); setHotel(''); setBookingDate(today()); setOperator(''); setOperatorRef('')

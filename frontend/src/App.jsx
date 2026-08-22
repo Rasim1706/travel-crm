@@ -230,7 +230,7 @@ export default function App() {
                 </button>
               ))}
             </div>
-            {formMode === 'sale'   && <SaleForm   session={session} />}
+            {formMode === 'sale'   && <SaleForm   session={session} onSaved={() => { setDashKey(k => k + 1) }} />}
             {formMode === 'doplat' && <DoplatForm session={session} />}
           </>
         )}
