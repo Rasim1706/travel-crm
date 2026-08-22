@@ -711,9 +711,7 @@ app.post('/api/sales', async (req, res) => {
     const sheetName = currentMonthSheet();
     await ensureSheet(sheets, spreadsheetId, sheetName, SALE_HEADERS);
     const debt = (amount && prepayment) ? Math.round((Number(amount) - Number(prepayment)) * 100) / 100 : '';
-    await sheets.spreadsheets.values.append({
-      spreadsheetId, range: `${sheetName}!A:AB`, valueInputOption: 'RAW',
-      requestBody: { values: [[
+    const rowValues = [
         new Date().toISOString(), contractNumber.trim(), manager, Number(salesCount),
         bookingDate || '', clientName || '', direction || '', hotel || '', phone || '', source || '',
         amount ? Number(amount) : '', currency || '',
@@ -727,10 +725,16 @@ app.post('/api/sales', async (req, res) => {
         departureDate || '', arrivalDate || '', dueDate || '',
         commissionCurrency || currency || '',
         operator || '', operatorRef || '',
-      ]] },
+    ];
+    // Find next empty row in column A, then write to explicit range to avoid Sheets misaligning columns
+    const colA = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A:A` });
+    const nextRow = (colA.data.values || []).length + 1;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId, range: `${sheetName}!A${nextRow}:AB${nextRow}`, valueInputOption: 'RAW',
+      requestBody: { values: [rowValues] },
     });
     res.json({ success: true });
-  } catch (e) { res.json({ success: false, error: e.message }); }
+  } catch (e) { console.error('[SALES POST] ERROR:', e.message); res.json({ success: false, error: e.message }); }
 });
 
 // ── Курс валют (прокси CBU + Ipak Yuli Bank) ─────────
